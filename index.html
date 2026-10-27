@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23e11d48'/><path d='M30 40 L70 40 L65 85 L35 85 Z' fill='%23ffffff'/><circle cx='50' cy='30' r='10' fill='none' stroke='%23ffffff' stroke-width='6'/></svg>" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Red Bag 3D Limit Visualizer | 83 × 42 × 47 cm Packing Analysis</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+
+<body>
+  <div id="app" class="app-layout">
+    <!-- TOP NAVIGATION BAR -->
+    <header class="app-header">
+      <div class="header-branding">
+        <div class="bag-logo">
+          <span class="bag-logo-icon">🧺</span>
+        </div>
+        <div>
+          <h1 class="header-title">Red Bag 3D Packing & Height Limit Visualizer</h1>
+          <p class="header-subtitle">Accurate 3D dimensional analysis for laundry linen folding, orientation, and 47cm
+            height verification</p>
+        </div>
+      </div>
+
+      <div class="header-stats">
+        <div class="stat-pill">
+          <span class="stat-label">Bag Spec:</span>
+          <strong class="stat-value highlight">83 (L) × 42 (W) × 47 (H) cm</strong>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-label">Volume:</span>
+          <strong class="stat-value">163.8 Liters</strong>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-label">Products:</span>
+          <strong class="stat-value">11 Linen Types</strong>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button id="btn-export-png" class="btn btn-secondary" title="Save high-resolution 3D snapshot">
+          📷 Export 3D View
+        </button>
+      </div>
+    </header>
+
+    <!-- NAVIGATION TABS -->
+    <nav class="app-tabs">
+      <button class="tab-btn active" data-tab="single">
+        <span class="tab-icon">📦</span> Single Product 3D
+      </button>
+      <button class="tab-btn" data-tab="mixed">
+        <span class="tab-icon">🧺</span> Mixed 3D Packer (Packer3D)
+      </button>
+      <button class="tab-btn" data-tab="matrix">
+        <span class="tab-icon">📊</span> All 11 Products Limit Matrix
+      </button>
+    </nav>
+
+    <!-- MAIN CONTENT AREA -->
+    <main class="main-workspace">
+      <!-- 3D VIEWPORT CONTAINER -->
+      <div class="viewport-section">
+        <div id="viewport-canvas-container" class="canvas-container">
+          <!-- 3D Canvas will be injected here -->
+        </div>
+
+        <!-- FLOATING TOOLBAR ON 3D VIEWPORT -->
+        <div class="viewport-hud-top">
+          <div class="hud-group">
+            <span class="hud-label">Camera:</span>
+            <button class="hud-btn active" data-cam="iso" title="Isometric 3D Perspective">Isometric</button>
+            <button class="hud-btn" data-cam="top" title="Top Down View - Inspect Footprint">Top (X-Y)</button>
+            <button class="hud-btn" data-cam="front" title="Front View - Inspect Stack Height">Front (X-Z)</button>
+            <button class="hud-btn" data-cam="side" title="Side View">Side (Y-Z)</button>
+            <button class="hud-btn" data-cam="inside" title="Inside Bag View">Inside</button>
+          </div>
+
+          <div class="hud-group">
+            <span class="hud-label">Lighting:</span>
+            <button class="hud-btn active" data-light="studio" title="Warm Studio Softbox">☀️ Studio</button>
+            <button class="hud-btn" data-light="daylight" title="Crisp Clean Daylight">💡 Daylight</button>
+            <button class="hud-btn" data-light="spotlight" title="Overhead Inspector Spotlight">🔦 Spotlight</button>
+            <button class="hud-btn" data-light="vibrant" title="Dramatic Vivid Contrast">🔮 Vibrant</button>
+          </div>
+        </div>
+
+        <div class="viewport-hud-bottom">
+          <div class="hud-group">
+            <span class="hud-label">Explode Layers:</span>
+            <input type="range" id="explode-slider" min="0" max="1" step="0.01" value="0" class="mini-slider" />
+            <span id="explode-value" class="hud-val">0%</span>
+          </div>
+
+          <div class="hud-group">
+            <span class="hud-label">Bag Opacity:</span>
+            <input type="range" id="opacity-slider" min="0.05" max="0.9" step="0.05" value="0.35" class="mini-slider" />
+            <span id="opacity-value" class="hud-val">35%</span>
+          </div>
+
+          <div class="hud-group">
+            <span class="hud-label">Brightness:</span>
+            <input type="range" id="light-brightness-slider" min="0.6" max="2.4" step="0.05" value="1.2" class="mini-slider" />
+            <span id="light-brightness-val" class="hud-val">1.2x</span>
+          </div>
+
+          <div class="hud-group">
+            <label class="hud-checkbox-label">
+              <input type="checkbox" id="toggle-dims" checked />
+              <span>3D Dimension Calipers</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- 3D HOVER TOOLTIP -->
+        <div id="product-tooltip" class="floating-tooltip"></div>
+      </div>
+
+      <!-- RIGHT SIDEBAR / CONTROL DOCK -->
+      <aside class="sidebar-dock">
+        <!-- TAB 1: SINGLE PRODUCT INSPECTION -->
+        <div id="tab-content-single" class="tab-content active">
+          <!-- Product Selection -->
+          <div class="panel-card">
+            <div class="card-header">
+              <h3>Select Product to Validate</h3>
+              <span class="badge-accent">11 Available</span>
+            </div>
+            <div class="product-selector-wrapper">
+              <select id="product-select" class="custom-select">
+                <option value="pillow-cover">Pillow Cover (36.9 × 24.5 × 0.31 cm)</option>
+                <option value="hand-towel">Hand Towel (37.6 × 29.2 × 0.94 cm)</option>
+                <option value="double-bed-sheet">Double Bed Sheet (67.5 × 38.5 × 1.04 cm)</option>
+                <option value="single-bed-sheet">Single Bed Sheet (47.5 × 39.0 × 1.04 cm)</option>
+                <option value="bath-mat">Bath Mat (3 Fold) (35.5 × 24.0 × 1.25 cm)</option>
+                <option value="bath-robe">Bath Robe (42.5 × 29.8 × 1.57 cm)</option>
+                <option value="single-duvet-cover">Single Duvet Cover (43.5 × 30.0 × 2.35 cm)</option>
+                <option value="double-duvet-cover">Double Duvet Cover (29.0" × 13.6" × 0.93" / 73.7 × 34.5 × 2.35 cm)
+                </option>
+                <option value="queen-duvet-cover">Queen Duvet Cover (62.8 × 35.4 × 2.35 cm)</option>
+                <option value="bath-towel">Bath Towel (36.8 × 26.5 × 3.13 cm)</option>
+                <option value="face-towel">Face Towel (29.8 × 27.4 × 3.62 cm)</option>
+              </select>
+            </div>
+
+            <!-- Quick card carousel -->
+            <div id="product-grid" class="product-card-scroller">
+              <!-- Cards generated dynamically -->
+            </div>
+          </div>
+
+          <!-- DISCREPANCY & FOOTPRINT ALERTS -->
+          <div id="discrepancy-box" class="alert-box" style="display: none;"></div>
+
+          <!-- QUANTITY & LAYER ADJUSTMENT -->
+          <div class="panel-card">
+            <div class="card-header">
+              <h3>Quantity & Packing Height</h3>
+              <div class="stepper-controls">
+                <button id="btn-dec-layer" class="btn-micro" title="Remove 1 Layer">-1 Layer</button>
+                <button id="btn-inc-layer" class="btn-micro" title="Add 1 Layer">+1 Layer</button>
+              </div>
+            </div>
+
+            <div class="quantity-input-row">
+              <input type="number" id="item-count-input" class="number-input" min="1" value="300" />
+              <span class="unit-text">Units in Bag</span>
+              <div class="preset-buttons">
+                <button id="btn-preset-limit" class="btn-pill" title="Reset to table Bag Limit">Stated Limit</button>
+                <button id="btn-preset-47cm" class="btn-pill primary" title="Set exact items for 47cm height">Fit 47cm
+                  Bag</button>
+              </div>
+            </div>
+
+            <div class="slider-container">
+              <div class="slider-labels">
+                <span>1 unit</span>
+                <span id="max-count-label">300 max</span>
+              </div>
+              <input type="range" id="item-count-slider" min="1" max="300" value="300" class="main-slider" />
+            </div>
+          </div>
+
+          <!-- ORIENTATION & PLACEMENT -->
+          <div class="panel-card">
+            <div class="card-header">
+              <h3>Bag Placement & Orientation</h3>
+            </div>
+            <p class="section-desc">Rotate item by 90° on the bag floor to test clearance against 83cm × 42cm walls:</p>
+            <div class="orientation-buttons">
+              <button id="btn-orient-0" class="orient-btn">
+                <div class="orient-icon">⬛</div>
+                <div class="orient-info">
+                  <strong>Normal (0°)</strong>
+                  <span>Length along X (83cm)</span>
+                </div>
+              </button>
+              <button id="btn-orient-90" class="orient-btn active">
+                <div class="orient-icon rotate-90">⬛</div>
+                <div class="orient-info">
+                  <strong>Rotated (90°)</strong>
+                  <span>Length along Y (42cm)</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <!-- HAND TOWEL LAYOUT VARIANT (Visible when Hand Towel selected) -->
+          <div id="hand-towel-layout-card" class="panel-card" style="display: none;">
+            <div class="card-header">
+              <h3>Hand Towel Layout Variant</h3>
+              <span class="badge-accent">Operational Fold</span>
+            </div>
+            <p class="section-desc">Select side-by-side arrangement inside 83 × 42 cm Red Bag:</p>
+            <div class="orientation-buttons">
+              <button id="btn-ht-2" class="orient-btn active">
+                <div class="orient-info">
+                  <strong>2 per Layer (Wide 29.2cm)</strong>
+                  <span>50 layers × 0.9400 cm = 47.0cm</span>
+                </div>
+              </button>
+              <button id="btn-ht-3" class="orient-btn">
+                <div class="orient-info">
+                  <strong>3 per Layer (Narrow 22.6cm)</strong>
+                  <span>33.3 layers × 1.4100 cm = 47.0cm</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <!-- COMPRESSION / SQUISH FACTOR CARD -->
+          <div class="panel-card">
+            <div class="card-header">
+              <h3>Fabric Compression / "Squish" Factor</h3>
+              <span id="squish-pct-badge" class="badge-accent">0% Squish</span>
+            </div>
+            <p class="section-desc">Soft laundry items compress under stack weight and hand packing, preventing opening
+              unnecessary bags:</p>
+            <div class="slider-container">
+              <div class="slider-labels">
+                <span>0% (Spec Uncompressed)</span>
+                <span id="squish-value-display">0% Squish (Rigid)</span>
+                <span>15% (Tight Compression)</span>
+              </div>
+              <input type="range" id="squish-slider" min="0" max="0.15" step="0.01" value="0" class="main-slider" />
+            </div>
+            <div id="squish-savings-banner" class="alert-box safe"
+              style="display:none; padding: 8px 12px; margin-top: 4px;"></div>
+          </div>
+
+          <!-- REAL-TIME AUDIT & LIMIT VERIFICATION METRICS -->
+          <div class="panel-card audit-card">
+            <div class="card-header">
+              <h3>Fit & Limit Verification</h3>
+              <span id="metric-height-badge" class="status-badge safe">Calculating...</span>
+            </div>
+
+            <!-- Bags Required Counter -->
+            <div class="bags-required-banner">
+              <div class="bag-count-display">
+                <span class="bag-icon-emoji">🎒</span>
+                <div>
+                  <span class="bag-count-title">Bags Required:</span>
+                  <strong id="metric-bags-count" class="bag-count-number">1 Red Bag</strong>
+                </div>
+              </div>
+              <div id="metric-bags-savings" class="bag-savings-tag">✓ Fits in 1 Bag</div>
+            </div>
+
+            <!-- Vertical Height Gauge -->
+            <div class="audit-metric-block">
+              <div class="metric-row">
+                <span class="metric-label">Stacked Height:</span>
+                <strong id="metric-height-val" class="metric-val highlight">47.00 cm (100%)</strong>
+              </div>
+              <div class="progress-track">
+                <div id="metric-height-bar" class="progress-fill safe" style="width: 76.9%;"></div>
+                <!-- 47cm Limit marker indicator -->
+                <div class="progress-limit-marker" style="left: 76.9%;" title="47.0cm Bag Limit Line">
+                  <span>47cm Limit</span>
+                </div>
+              </div>
+              <div class="metric-subtext">Bag Height: <strong>47.00 cm</strong></div>
+            </div>
+
+            <!-- Footprint Clearance -->
+            <div class="audit-metric-block">
+              <div class="metric-row">
+                <span class="metric-label">Bag Footprint (83 × 42 cm):</span>
+                <span id="metric-footprint-badge" class="status-badge safe">✓ Fits Footprint</span>
+              </div>
+              <div class="footprint-grid">
+                <div class="footprint-cell">
+                  <span class="cell-label">Layer X (Length):</span>
+                  <span id="metric-footprint-x" class="cell-val">49.0 cm / 83.0 cm</span>
+                </div>
+                <div class="footprint-cell">
+                  <span class="cell-label">Layer Y (Width):</span>
+                  <span id="metric-footprint-y" class="cell-val">36.9 cm / 42.0 cm</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Details List -->
+            <div class="audit-details-grid">
+              <div class="detail-item">
+                <span class="detail-label">Calculated Layers:</span>
+                <strong id="metric-layers">100 layers</strong>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Layer Pattern:</span>
+                <strong id="metric-items-per-layer">2 per layer</strong>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Volume Utilization:</span>
+                <strong id="metric-volume-util">65.2%</strong>
+              </div>
+            </div>
+
+            <!-- Engineering Observation -->
+            <div class="metric-observation">
+              <div class="obs-title">Technical Notes:</div>
+              <p id="product-notes-text">Notes will appear here...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: MIXED ORDER 3D PACKER (PACKER3D) -->
+        <div id="tab-content-mixed" class="tab-content" style="display: none;">
+          <!-- Quick Presets -->
+          <div class="panel-card">
+            <div class="card-header">
+              <h3>Mixed Packing Presets</h3>
+              <span class="badge-accent">Quick Orders</span>
+            </div>
+            <div class="preset-buttons-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px;">
+              <button id="btn-preset-hotel" class="btn-pill" style="font-size:0.75rem;">🏨 Hotel Turnover</button>
+              <button id="btn-preset-trolley" class="btn-pill" style="font-size:0.75rem;">🧺 Laundry Trolley</button>
+              <button id="btn-preset-towels" class="btn-pill" style="font-size:0.75rem;">🧼 Towel Bundle</button>
+              <button id="btn-preset-clear" class="btn-pill" style="font-size:0.75rem; color:#f87171;">🗑️ Clear Basket</button>
+            </div>
+          </div>
+
+          <!-- Add Item to Basket -->
+          <div class="panel-card">
+            <div class="card-header">
+              <h3>Build Laundry Basket</h3>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center; margin-top:8px;">
+              <select id="mixed-product-select" class="main-select" style="flex:1;">
+                <!-- Populated dynamically -->
+              </select>
+              <input type="number" id="mixed-add-qty" min="1" max="200" value="10" class="number-input" style="width:70px;" />
+              <button id="btn-mixed-add-item" class="btn btn-primary btn-sm" style="white-space:nowrap;">➕ Add</button>
+            </div>
+
+            <!-- Basket items list -->
+            <div id="mixed-items-container" class="mixed-items-list" style="margin-top:14px; max-height:220px; overflow-y:auto;">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Run Packer3D Action Button -->
+          <div class="panel-card" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(225, 29, 72, 0.15)); border: 1px solid rgba(99, 102, 241, 0.4);">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <strong style="color:#e0e7ff; font-size:0.95rem;">Packer3D Engine</strong>
+                <div style="font-size:0.72rem; color:#94a3b8;">Yaw-only rotation • Support constraints</div>
+              </div>
+              <button id="btn-run-packer3d" class="btn btn-primary" style="padding: 8px 16px; font-weight: 700; box-shadow: 0 4px 14px rgba(99,102,241,0.4);">
+                ⚡ Run 3D Auto-Pack
+              </button>
+            </div>
+
+            <!-- Multi-bag selector (visible when >= 2 bags required) -->
+            <div id="mixed-bag-switcher" style="display:none; margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.1);">
+              <div style="font-size:0.75rem; color:#94a3b8; margin-bottom:6px;">Select Bag to Inspect in 3D:</div>
+              <div id="mixed-bag-buttons" style="display:flex; gap:6px; flex-wrap:wrap;">
+                <!-- Bag buttons -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Real-Time Packing Audit Metrics -->
+          <div class="panel-card audit-card">
+            <div class="card-header">
+              <h3>Packer3D Verification</h3>
+              <span id="mixed-status-badge" class="status-badge safe">Ready</span>
+            </div>
+
+            <!-- Bags banner -->
+            <div class="bags-required-banner">
+              <div class="bags-required-icon">🎒</div>
+              <div class="bags-required-text">
+                <div class="bags-label">Bags Required:</div>
+                <div id="mixed-bags-count" class="bags-count">1 Red Bag</div>
+              </div>
+            </div>
+
+            <!-- Max Height Metric -->
+            <div class="metric-row">
+              <span class="metric-label">Max Stack Height:</span>
+              <span id="mixed-max-height" class="metric-value">0.00 cm (0%)</span>
+            </div>
+            <div class="progress-bar-container">
+              <div id="mixed-height-bar" class="progress-fill safe" style="width: 0%;"></div>
+            </div>
+
+            <!-- Stats grid -->
+            <div class="audit-details-grid" style="margin-top:12px;">
+              <div class="detail-item">
+                <span class="detail-label">Packed Units:</span>
+                <strong id="mixed-total-units">0 items</strong>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Total Weight:</span>
+                <strong id="mixed-total-weight">0.0 kg</strong>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Volume Util:</span>
+                <strong id="mixed-volume-util">0.0%</strong>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Support Check:</span>
+                <strong id="mixed-support-check" style="color:#34d399;">✓ 100% stable</strong>
+              </div>
+            </div>
+
+            <!-- Packing breakdown text -->
+            <div class="metric-observation" style="margin-top:12px;">
+              <div class="obs-title">Bag Manifest Breakdown:</div>
+              <p id="mixed-manifest-text" style="font-size:0.78rem; line-height:1.4;">No items packed yet.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 3: FULL DATA COMPARISON MATRIX -->
+        <div id="tab-content-matrix" class="tab-content" style="display: none;">
+          <div class="panel-card full-table-card">
+            <div class="card-header">
+              <h3>All 11 Products Limit & Fit Matrix</h3>
+              <button id="btn-export-csv" class="btn btn-secondary btn-sm">📥 Download CSV</button>
+            </div>
+            <div class="table-responsive">
+              <table class="data-matrix-table">
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Length (X)</th>
+                    <th>Width (Y)</th>
+                    <th>Exact H (Z)</th>
+                    <th>Bag Limit</th>
+                    <th>Layout</th>
+                    <th>Stack Height @ Limit</th>
+                    <th>Footprint Fit</th>
+                    <th>Validation Analysis</th>
+                  </tr>
+                </thead>
+                <tbody id="matrix-table-body">
+                  <!-- Populated dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+
+</html>
