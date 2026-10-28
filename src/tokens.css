@@ -1,0 +1,78 @@
+/* Hallmark · tokens · theme: custom (brand crimson anchor)
+ * vibe: "laundry-floor instrument, crimson brand, mono data"
+ * paper: oklch(96.8% 0.006 38) · accent: oklch(57% 0.20 22)
+ * axes: light paper / grotesk-sans (IBM Plex) / warm-red accent
+ * display: IBM Plex Sans 600 · body: IBM Plex Sans 400 · mono: IBM Plex Mono
+ */
+
+:root {
+  /* Paper & ink — warm neutrals tinted toward the crimson anchor hue */
+  --color-paper:       oklch(96.8% 0.006 38);
+  --color-paper-2:     oklch(98.7% 0.004 38);
+  --color-paper-3:     oklch(93.6% 0.009 38);
+  --color-rule:        oklch(89.5% 0.008 38);
+  --color-rule-strong: oklch(82%   0.011 38);
+  --color-ink:         oklch(23%   0.012 38);
+  --color-ink-hover:   oklch(32%   0.012 38);
+  --color-ink-2:       oklch(41%   0.010 38);
+  --color-muted:       oklch(49%   0.010 38);
+
+  /* Accent — the physical Red Bag crimson. Used at ≤ 5% of any viewport:
+     logo mark, active-tab tick, 47 cm limit marker, focus rings. */
+  --color-accent:      oklch(57% 0.200 22);
+  --color-accent-deep: oklch(49% 0.185 22);
+  --color-accent-bg:   oklch(96%  0.022 22);
+  --color-accent-rule: oklch(87%  0.055 22);
+  --color-focus:       oklch(56% 0.190 22);
+
+  /* Semantic status (functional, not decorative) */
+  --color-ok:          oklch(43% 0.110 152);
+  --color-ok-bg:       oklch(95.5% 0.030 152);
+  --color-ok-rule:     oklch(86%  0.062 152);
+  --color-warn:        oklch(45% 0.115 65);
+  --color-warn-bg:     oklch(96%   0.032 75);
+  --color-warn-rule:   oklch(88%  0.075 75);
+  --color-bad:         oklch(48% 0.185 28);
+  --color-bad-bg:      oklch(95.5% 0.026 28);
+  --color-bad-rule:    oklch(87%  0.055 28);
+
+  /* Viewport instrument surfaces (dark scope over the 3D canvas).
+     --color-viewport must match the scene background in src/scene/bagVisualizer.js */
+  --color-viewport:    #080d1a;
+  --color-hud-bg:      oklch(15.5% 0.018 262);
+  --color-hud-rule:    oklch(28%   0.020 262);
+  --color-hud-ink:     oklch(91%   0.005 262);
+  --color-hud-muted:   oklch(72%   0.010 262);
+
+  /* Type — IBM Plex (engineering family), mono for every numeric readout */
+  --font-display: "IBM Plex Sans", -apple-system, "Segoe UI", sans-serif;
+  --font-body:    "IBM Plex Sans", -apple-system, "Segoe UI", sans-serif;
+  --font-mono:    "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
+
+  --text-xs: 0.6875rem;  /* 11 */
+  --text-sm: 0.8125rem;  /* 13 */
+  --text-md: 0.875rem;   /* 14 */
+  --text-lg: 1rem;       /* 16 */
+  --text-xl: 1.75rem;    /* 28 — the one big numeric moment (bag count) */
+
+  /* 4-pt spacing scale */
+  --space-3xs: 2px;
+  --space-2xs: 4px;
+  --space-xs:  8px;
+  --space-sm:  12px;
+  --space-md:  16px;
+  --space-lg:  24px;
+  --space-xl:  32px;
+
+  --radius-1: 4px;
+  --radius-2: 6px;
+  --radius-3: 10px;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 120ms;
+  --dur: 180ms;
+
+  --z-hud: 20;
+  --z-header: 40;
+  --z-tooltip: 100;
+}
