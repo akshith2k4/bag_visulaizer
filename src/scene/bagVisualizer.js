@@ -16,6 +16,7 @@ export class BagVisualizer {
     this.showWireframe = false;
     this.showDimensions = true;
     this.compressionFactor = 0; // Default 0 (uncompressed fold spec)
+    this.supportThreshold = 0.65; // Matches the mixed packer's stability threshold
 
     // Texture and material caches to prevent GPU memory leaks
     this._fabricTexCache = new Map();
@@ -758,8 +759,8 @@ export class BagVisualizer {
       const posY = item.y + item.dy / 2 + explodeY;
 
       // Small natural margin between stacked packages
-      const h = Math.max(item.dy * 0.96, 0.12);
-      const geo = new THREE.BoxGeometry(item.dx * 0.985, h, item.dz * 0.985);
+      const h = Math.max(item.dy * 0.995, 0.12);
+      const geo = new THREE.BoxGeometry(item.dx * 0.998, h, item.dz * 0.998);
       const mesh = new THREE.Mesh(geo, mat);
       mesh.position.set(posX, posY, posZ);
       mesh.castShadow = true;
@@ -930,13 +931,16 @@ export class BagVisualizer {
     let detailsHtml = '';
     if (data.supportRatio !== undefined) {
       // 3D Bin Packed item
+      const supportOk = data.supportRatio >= this.supportThreshold * 100;
+      const supportColor = supportOk ? '#34d399' : data.supportRatio >= 50 ? '#fbbf24' : '#f87171';
+      const supportIcon = supportOk ? '✓' : '⚠';
       detailsHtml = `
         <div class="tooltip-row"><span>Packed Item #:</span><strong>${data.itemNumber} of ${data.totalItems}</strong></div>
         <div class="tooltip-row"><span>Footprint (X×Z):</span><strong>${data.dx.toFixed(1)} × ${data.dz.toFixed(1)} cm</strong></div>
         <div class="tooltip-row"><span>Fold Thickness:</span><strong>${data.dy.toFixed(2)} cm</strong></div>
         <div class="tooltip-row"><span>Elevation (Y):</span><strong>${data.y.toFixed(2)} → ${data.topY.toFixed(2)} cm</strong></div>
         <div class="tooltip-row"><span>Orientation:</span><strong>${data.rot === 0 ? 'Normal (0°)' : 'Rotated (90°)'}</strong></div>
-        <div class="tooltip-row"><span>Support:</span><strong style="color:#34d399;">✓ ${data.supportRatio}% supported</strong></div>
+        <div class="tooltip-row"><span>Support:</span><strong style="color:${supportColor};">${supportIcon} ${data.supportRatio}% supported</strong></div>
       `;
     } else {
       // Single product stack

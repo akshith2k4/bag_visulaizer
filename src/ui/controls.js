@@ -1,5 +1,5 @@
 import { PRODUCTS, calculateFit } from '../data/products.js';
-import { Packer3D } from '../algo/packer3d.js';
+import { MixedBagPacker, DEFAULT_SUPPORT_THRESHOLD } from '../algo/binpackAdapter.js';
 
 export class UIController {
   constructor(visualizer) {
@@ -7,8 +7,9 @@ export class UIController {
     this.products = PRODUCTS;
     this.bagSpec = visualizer.bagSpec;
 
-    // 3D Bin Packer Engine initialization
-    this.packer = new Packer3D(this.bagSpec);
+    // Mixed-bag 3D packer (binpack3d engine + linen-specific ordering)
+    this.packer = new MixedBagPacker(this.bagSpec);
+    if (this.visualizer) this.visualizer.supportThreshold = DEFAULT_SUPPORT_THRESHOLD;
     this.currentPackedResult = null;
     this.selectedBagIndex = 0;
 
@@ -63,6 +64,12 @@ export class UIController {
     this.mixedVolumeUtil = document.getElementById('mixed-volume-util');
     this.mixedSupportCheck = document.getElementById('mixed-support-check');
     this.mixedManifestText = document.getElementById('mixed-manifest-text');
+    this.mixedManifestTitle = document.getElementById('mixed-manifest-title');
+    this.mixedOrderSummary = document.getElementById('mixed-order-summary');
+    this.mixedScopeLabel = document.getElementById('mixed-scope-label');
+    this.mixedUnfitBanner = document.getElementById('mixed-unfit-banner');
+    this.mixedUnfitTitle = document.getElementById('mixed-unfit-title');
+    this.mixedUnfitDetail = document.getElementById('mixed-unfit-detail');
 
     // Fabric compression / squish
     this.squishSlider = document.getElementById('squish-slider');
@@ -141,7 +148,7 @@ export class UIController {
       });
     });
 
-    // Mixed Tab (Packer3D)
+    // Mixed Tab (binpack3d)
     if (this.btnMixedAddItem && this.mixedProductSelect && this.mixedAddQty) {
       const addItem = () => {
         const prodId = this.mixedProductSelect.value;
@@ -286,44 +293,91 @@ export class UIController {
     if (!this.packer || !this.mixedBag) return;
 
     if (this.mixedBag.length === 0) {
-      if (this.visualizer) {
-        this.visualizer.renderPackedBag({ items: [], maxHeight: 0 });
-      }
-      if (this.mixedBagsCount) this.mixedBagsCount.textContent = '0';
-      if (this.mixedBagsLabel) this.mixedBagsLabel.textContent = 'bags required';
-      if (this.mixedMaxHeight) this.mixedMaxHeight.innerHTML = '0.00 <span class="unit">cm</span> <span class="ratio">(0%)</span>';
-      if (this.mixedHeightBar) this.mixedHeightBar.style.width = '0%';
-      if (this.mixedStatusBadge) {
-        this.mixedStatusBadge.className = 'status-badge neutral';
-        this.mixedStatusBadge.textContent = 'Basket empty';
-      }
-      if (this.mixedTotalUnits) this.mixedTotalUnits.textContent = '0';
-      if (this.mixedTotalWeight) this.mixedTotalWeight.textContent = '0.0 kg';
-      if (this.mixedVolumeUtil) this.mixedVolumeUtil.textContent = '0.0%';
-      if (this.mixedSupportCheck) this.mixedSupportCheck.textContent = '100%';
-      if (this.mixedBagSwitcher) this.mixedBagSwitcher.style.display = 'none';
-      if (this.mixedManifestText) this.mixedManifestText.textContent = 'Add linens above to inspect bag manifest.';
+      this.currentPackedResult = null;
+      this.selectedBagIndex = 0;
+      this.renderEmptyState();
       return;
     }
 
-    // Run 3D bin packing (unchanged algorithm)
+    // Run 3D bin packing (binpack3d engine, weight cap intentionally disabled)
     this.currentPackedResult = this.packer.pack(this.mixedBag, {
       squishFactor: this.compressionFactor,
-      supportThreshold: 0.65
+      supportThreshold: DEFAULT_SUPPORT_THRESHOLD
     });
 
+    this.selectedBagIndex = Math.min(
+      this.selectedBagIndex,
+      Math.max(0, this.currentPackedResult.bagsRequired - 1)
+    );
+    this.renderPackedResult();
+  }
+
+  selectBag(index) {
+    if (!this.currentPackedResult) return;
+    const lastIndex = Math.max(0, this.currentPackedResult.bagsRequired - 1);
+    this.selectedBagIndex = Math.max(0, Math.min(index, lastIndex));
+    this.renderPackedResult();
+  }
+
+  renderEmptyState() {
+    if (this.visualizer) {
+      this.visualizer.renderPackedBag({ items: [], maxHeight: 0 });
+    }
+    if (this.mixedBagsCount) this.mixedBagsCount.textContent = '0';
+    if (this.mixedBagsLabel) this.mixedBagsLabel.textContent = 'bags required';
+    if (this.mixedMaxHeight) this.mixedMaxHeight.innerHTML = '0.00 <span class="unit">cm</span> <span class="ratio">(0%)</span>';
+    if (this.mixedHeightBar) {
+      this.mixedHeightBar.style.width = '0%';
+      this.mixedHeightBar.className = 'progress-fill safe';
+    }
+    if (this.mixedStatusBadge) {
+      this.mixedStatusBadge.className = 'status-badge neutral';
+      this.mixedStatusBadge.textContent = 'Basket empty';
+    }
+    if (this.mixedTotalUnits) this.mixedTotalUnits.textContent = '0';
+    if (this.mixedTotalWeight) this.mixedTotalWeight.textContent = '0.0 kg';
+    if (this.mixedVolumeUtil) this.mixedVolumeUtil.textContent = '0.0%';
+    if (this.mixedSupportCheck) {
+      this.mixedSupportCheck.textContent = '—';
+      this.mixedSupportCheck.className = 'stat-value mono';
+    }
+    if (this.mixedBagSwitcher) this.mixedBagSwitcher.style.display = 'none';
+    if (this.mixedManifestText) this.mixedManifestText.textContent = 'Add linens above to inspect bag manifest.';
+    if (this.mixedManifestTitle) this.mixedManifestTitle.textContent = 'Bag manifest';
+    if (this.mixedOrderSummary) this.mixedOrderSummary.innerHTML = '';
+    if (this.mixedScopeLabel) this.mixedScopeLabel.textContent = 'No bag selected';
+    if (this.mixedUnfitBanner) this.mixedUnfitBanner.hidden = true;
+  }
+
+  renderPackedResult() {
     const res = this.currentPackedResult;
-    this.selectedBagIndex = Math.min(this.selectedBagIndex, Math.max(0, res.bagsRequired - 1));
+    if (!res) {
+      this.renderEmptyState();
+      return;
+    }
+
     const activeBag = res.bags[this.selectedBagIndex];
 
-    if (!activeBag) return;
+    if (!activeBag) {
+      this.renderNoBagState(res);
+      return;
+    }
 
     // Render active bag in the 3D scene
-    this.visualizer.renderPackedBag(activeBag);
+    if (this.visualizer) this.visualizer.renderPackedBag(activeBag);
 
     // Bags required
     if (this.mixedBagsCount) this.mixedBagsCount.textContent = String(res.bagsRequired);
-    if (this.mixedBagsLabel) this.mixedBagsLabel.textContent = res.bagsRequired === 1 ? 'red bag required' : 'red bags required';
+    if (this.mixedBagsLabel) {
+      this.mixedBagsLabel.textContent = res.bagsRequired === 1 ? 'red bag required' : 'red bags required';
+    }
+
+    // Scope label: every number below is for the selected bag
+    if (this.mixedScopeLabel) {
+      this.mixedScopeLabel.textContent = res.bagsRequired > 1
+        ? `Showing bag ${this.selectedBagIndex + 1} of ${res.bagsRequired}`
+        : 'Showing the only bag';
+    }
 
     // Max height metric
     if (this.mixedMaxHeight) {
@@ -332,9 +386,14 @@ export class UIController {
     }
 
     if (this.mixedHeightBar) {
-      const fillPct = Math.min((activeBag.maxHeight / this.bagSpec.height) * 100, 130);
-      this.mixedHeightBar.style.width = `${(fillPct / 130) * 100}%`;
-      this.mixedHeightBar.className = activeBag.maxHeight > this.bagSpec.height ? 'progress-fill danger' : 'progress-fill safe';
+      const heightRatio = activeBag.maxHeight / this.bagSpec.height;
+      const fillPct = Math.min(heightRatio * 100, 100);
+      this.mixedHeightBar.style.width = `${fillPct}%`;
+      this.mixedHeightBar.className = heightRatio > 1
+        ? 'progress-fill danger'
+        : heightRatio >= 0.95
+          ? 'progress-fill warning'
+          : 'progress-fill safe';
     }
 
     // Status badge
@@ -342,13 +401,20 @@ export class UIController {
       if (activeBag.heightFits && res.allPacked) {
         this.mixedStatusBadge.className = 'status-badge safe';
         this.mixedStatusBadge.textContent = res.bagsRequired === 1 ? 'Fits in 1 bag' : `Packed in ${res.bagsRequired} bags`;
+      } else if (!res.allPacked) {
+        this.mixedStatusBadge.className = 'status-badge danger';
+        this.mixedStatusBadge.textContent = 'Some items did not fit';
       } else {
         this.mixedStatusBadge.className = 'status-badge danger';
         this.mixedStatusBadge.textContent = 'Exceeds bag capacity';
       }
     }
 
-    // Stats
+    // Per-bag stats
+    const minSupport = activeBag.items.length > 0
+      ? Math.min(...activeBag.items.map(item => item.supportRatio))
+      : 100;
+
     if (this.mixedTotalUnits) {
       this.mixedTotalUnits.textContent = `${activeBag.itemCount}`;
     }
@@ -359,7 +425,14 @@ export class UIController {
       this.mixedVolumeUtil.textContent = `${activeBag.volumeUtilization}%`;
     }
     if (this.mixedSupportCheck) {
-      this.mixedSupportCheck.textContent = '100%';
+      this.mixedSupportCheck.textContent = `${minSupport}%`;
+      this.mixedSupportCheck.className = `stat-value mono ${
+        minSupport >= DEFAULT_SUPPORT_THRESHOLD * 100
+          ? 'ok'
+          : minSupport >= 50
+            ? 'warn'
+            : 'bad'
+      }`;
     }
 
     // Multi-bag switcher
@@ -373,8 +446,7 @@ export class UIController {
           btn.className = `btn-chip${idx === this.selectedBagIndex ? ' is-active' : ''}`;
           btn.textContent = `Bag ${idx + 1} · ${bag.volumeUtilization}% · ${bag.itemCount} items`;
           btn.addEventListener('click', () => {
-            this.selectedBagIndex = idx;
-            this.runPacker3D();
+            this.selectBag(idx);
           });
           this.mixedBagButtons.appendChild(btn);
         });
@@ -383,7 +455,15 @@ export class UIController {
       }
     }
 
+    this.renderUnfitBanner(res);
+    this.renderOrderSummary(res);
+
     // Manifest breakdown
+    if (this.mixedManifestTitle) {
+      this.mixedManifestTitle.textContent = res.bagsRequired > 1
+        ? `Bag ${this.selectedBagIndex + 1} manifest`
+        : 'Bag manifest';
+    }
     if (this.mixedManifestText) {
       const breakdown = Object.entries(activeBag.productCounts)
         .map(([name, count]) => `<strong>${count}×</strong> ${name}`)
@@ -394,6 +474,95 @@ export class UIController {
         <span class="manifest-note">Stack height ${activeBag.maxHeight.toFixed(2)} cm of 47 cm — ${headroom} cm headroom remaining.</span>
       `;
     }
+  }
+
+  renderNoBagState(res) {
+    if (this.visualizer) {
+      this.visualizer.renderPackedBag({ items: [], maxHeight: 0 });
+    }
+    if (this.mixedBagsCount) this.mixedBagsCount.textContent = String(res.bagsRequired);
+    if (this.mixedBagsLabel) {
+      this.mixedBagsLabel.textContent = res.bagsRequired === 0
+        ? 'bags required'
+        : res.bagsRequired === 1
+          ? 'red bag required'
+          : 'red bags required';
+    }
+    if (this.mixedScopeLabel) this.mixedScopeLabel.textContent = 'No bag produced';
+    if (this.mixedMaxHeight) {
+      this.mixedMaxHeight.innerHTML = '0.00 <span class="unit">cm</span> <span class="ratio">(0%)</span>';
+    }
+    if (this.mixedHeightBar) {
+      this.mixedHeightBar.style.width = '0%';
+      this.mixedHeightBar.className = 'progress-fill danger';
+    }
+    if (this.mixedStatusBadge) {
+      this.mixedStatusBadge.className = 'status-badge danger';
+      this.mixedStatusBadge.textContent = 'Nothing fits';
+    }
+    if (this.mixedTotalUnits) this.mixedTotalUnits.textContent = '0';
+    if (this.mixedTotalWeight) this.mixedTotalWeight.textContent = '0.0 kg';
+    if (this.mixedVolumeUtil) this.mixedVolumeUtil.textContent = '0.0%';
+    if (this.mixedSupportCheck) {
+      this.mixedSupportCheck.textContent = '—';
+      this.mixedSupportCheck.className = 'stat-value mono';
+    }
+    if (this.mixedBagSwitcher) this.mixedBagSwitcher.style.display = 'none';
+    if (this.mixedManifestTitle) this.mixedManifestTitle.textContent = 'Bag manifest';
+    if (this.mixedManifestText) {
+      this.mixedManifestText.textContent = 'No item fits inside the 83 × 42 × 47 cm envelope.';
+    }
+    this.renderUnfitBanner(res);
+    this.renderOrderSummary(res);
+  }
+
+  renderUnfitBanner(res) {
+    if (!this.mixedUnfitBanner) return;
+    const unfit = res.unfittedItems || [];
+
+    if (unfit.length === 0) {
+      this.mixedUnfitBanner.hidden = true;
+      return;
+    }
+
+    const counts = {};
+    for (const item of unfit) {
+      counts[item.name] = (counts[item.name] || 0) + 1;
+    }
+    const breakdown = Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => `${count}× ${name}`)
+      .join(' · ');
+
+    const totalUnits = res.summary?.totalUnits || (res.summary?.packedUnits ?? 0) + unfit.length;
+    const pct = totalUnits > 0 ? ((unfit.length / totalUnits) * 100).toFixed(1) : '0.0';
+    const reason = unfit[0]?.reason === 'max_bags'
+      ? `needs more than ${res.bagsRequired} bags`
+      : 'items are larger than the bag envelope';
+
+    this.mixedUnfitBanner.hidden = false;
+    if (this.mixedUnfitTitle) {
+      this.mixedUnfitTitle.textContent = `${unfit.length} item${unfit.length === 1 ? '' : 's'} did not fit (${pct}%)`;
+    }
+    if (this.mixedUnfitDetail) {
+      this.mixedUnfitDetail.textContent = `${reason} — ${breakdown}`;
+    }
+  }
+
+  renderOrderSummary(res) {
+    if (!this.mixedOrderSummary) return;
+    const summary = res.summary;
+    if (!summary) {
+      this.mixedOrderSummary.innerHTML = '';
+      return;
+    }
+
+    const bagWord = summary.bagsRequired === 1 ? 'bag' : 'bags';
+    const unfit = summary.unfitUnits > 0 ? ` · <strong>${summary.unfitUnits}</strong> unfit` : '';
+    this.mixedOrderSummary.innerHTML = `
+      <span>Order: <strong>${summary.totalUnits}</strong> units · <strong>${summary.totalWeight.toFixed(1)} kg</strong> est.${unfit}</span>
+      <span>Packed: <strong>${summary.packedUnits}</strong> units · <strong>${summary.packedWeight.toFixed(1)} kg</strong> in <strong>${summary.bagsRequired}</strong> ${bagWord} · avg <strong>${summary.overallVolumeUtilization}%</strong> volume</span>
+    `;
   }
 
   // Full comparison matrix

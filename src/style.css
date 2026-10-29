@@ -836,7 +836,7 @@ body {
   color: var(--color-muted);
 }
 
-/* Height gauge — track ends at 61 cm; the 47 cm limit sits at 76.9% */
+/* Height gauge — 0–100% of the 47 cm bag limit */
 
 .progress-track {
   position: relative;
@@ -886,6 +886,51 @@ body {
   white-space: nowrap;
 }
 
+.progress-limit-marker--end span {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+/* Per-bag scope label above the height/stats block */
+
+.stat-scope {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-muted);
+}
+
+/* Unfit-items warning */
+
+.unfit-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  background: var(--color-bad-bg);
+  border: 1px solid var(--color-bad-rule);
+  border-radius: var(--radius-2);
+  color: var(--color-bad);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.unfit-banner[hidden] {
+  display: none;
+}
+
+.unfit-banner strong {
+  font-size: var(--text-sm);
+}
+
+/* Notes under the packing stats */
+
+.pack-note {
+  margin-top: calc(var(--space-3xs) * -1);
+}
+
 /* Stat grid */
 
 .stat-grid {
@@ -926,6 +971,14 @@ body {
   color: var(--color-ok);
 }
 
+.stat-value.warn {
+  color: var(--color-warn);
+}
+
+.stat-value.bad {
+  color: var(--color-bad);
+}
+
 /* Observation / manifest */
 
 .metric-observation {
@@ -947,6 +1000,24 @@ body {
   font-size: var(--text-sm);
   line-height: 1.55;
   color: var(--color-ink-2);
+}
+
+.manifest-order {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed var(--color-rule);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--color-ink-2);
+}
+
+.manifest-order strong {
+  color: var(--color-ink);
+  font-weight: 600;
 }
 
 .manifest-list {

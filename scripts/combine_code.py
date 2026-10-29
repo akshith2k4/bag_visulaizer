@@ -24,6 +24,7 @@ CORE_FILES = [
     "src/main.js",
     "src/data/products.js",
     "src/algo/packer3d.js",
+    "src/algo/binpackAdapter.js",
     "src/scene/bagVisualizer.js",
     "src/scene/textures.js",
     "src/ui/controls.js",

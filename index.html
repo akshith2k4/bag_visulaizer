@@ -32,7 +32,7 @@
         </svg>
         <div class="header-titles">
           <h1 class="header-title">Red Bag <span class="title-dim">— Packing &amp; Height-Limit Visualizer</span></h1>
-          <p class="header-spec mono">83 × 42 × 47 cm · 163.8 L · 11 linen types</p>
+          <p class="header-spec mono">83 × 42 × 47 cm envelope · 163.8 L · 11 linen types</p>
         </div>
       </div>
 
@@ -118,7 +118,7 @@
 
       <!-- Control dock -->
       <aside class="sidebar-dock">
-        <!-- Mixed order packer (Packer3D) -->
+        <!-- Mixed order packer (binpack3d) -->
         <div id="tab-content-mixed" class="tab-content active" role="tabpanel" aria-label="Mixed 3D packer">
 
           <section class="panel-card">
@@ -163,20 +163,28 @@
               <span id="mixed-bags-label" class="bags-label">bags required</span>
             </div>
 
+            <div id="mixed-unfit-banner" class="unfit-banner" hidden>
+              <strong id="mixed-unfit-title">Some items did not fit</strong>
+              <span id="mixed-unfit-detail"></span>
+            </div>
+
             <div id="mixed-bag-switcher" class="bag-switcher" style="display: none;">
               <div class="switcher-label">Inspect bag in 3D</div>
               <div id="mixed-bag-buttons" class="chip-row"></div>
             </div>
 
+            <div id="mixed-scope-label" class="stat-scope">No bag selected</div>
+
             <div class="audit-metric-block">
               <div class="metric-row">
-                <span class="metric-label">Max stack height</span>
+                <span class="metric-label">Bag stack height</span>
                 <span id="mixed-max-height" class="metric-value mono">0.00 <span class="unit">cm</span> <span
                     class="ratio">(0%)</span></span>
               </div>
               <div class="progress-track">
                 <div id="mixed-height-bar" class="progress-fill safe" style="width: 0%"></div>
-                <div class="progress-limit-marker" style="left: 76.9%" title="47 cm bag limit">
+                <div class="progress-limit-marker progress-limit-marker--end" style="left: calc(100% - 2px)"
+                  title="47 cm bag limit">
                   <span>47 cm</span>
                 </div>
               </div>
@@ -184,25 +192,29 @@
 
             <div class="stat-grid">
               <div class="stat-cell">
-                <span class="stat-label">Packed units</span>
+                <span class="stat-label">Units in bag</span>
                 <strong id="mixed-total-units" class="stat-value mono">0</strong>
               </div>
               <div class="stat-cell">
-                <span class="stat-label">Total weight</span>
+                <span class="stat-label">Est. bag weight</span>
                 <strong id="mixed-total-weight" class="stat-value mono">0.0 kg</strong>
               </div>
               <div class="stat-cell">
-                <span class="stat-label">Volume util</span>
+                <span class="stat-label">Bag volume</span>
                 <strong id="mixed-volume-util" class="stat-value mono">0.0%</strong>
               </div>
               <div class="stat-cell">
-                <span class="stat-label">Support</span>
-                <strong id="mixed-support-check" class="stat-value mono ok">100%</strong>
+                <span class="stat-label">Bag support</span>
+                <strong id="mixed-support-check" class="stat-value mono">—</strong>
               </div>
             </div>
 
+            <p class="section-desc pack-note">Weight is an estimate (0.35 kg/item placeholder) and is not enforced.
+              Packing uses the full 83 × 42 × 47 cm envelope; the 0.4 cm bag wall is not deducted.</p>
+
             <div class="metric-observation">
-              <div class="obs-title">Bag manifest</div>
+              <div id="mixed-manifest-title" class="obs-title">Bag manifest</div>
+              <div id="mixed-order-summary" class="manifest-order"></div>
               <p id="mixed-manifest-text" class="manifest-text">Add linens or load a preset to pack.</p>
             </div>
           </section>
@@ -215,6 +227,9 @@
               <h3>Limit matrix — 11 products</h3>
               <button type="button" id="btn-export-csv" class="btn btn-secondary btn-sm">Export CSV</button>
             </header>
+            <p class="section-desc">Fixed-orientation estimate: uses each product's stated items-per-layer and a
+              straight stack. The mixed packer searches the floor and may fit more — or fewer, near the 47 cm
+              limit.</p>
             <div class="table-responsive">
               <table class="data-matrix-table">
                 <thead>
