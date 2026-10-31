@@ -1,4 +1,5 @@
 import { PRODUCTS } from '../data/products.js';
+import { RackPacker } from '../algo/rackPacker.js';
 
 export class RackControls {
   constructor(visualizer) {
@@ -6,8 +7,8 @@ export class RackControls {
     this.products = PRODUCTS;
     this.basket = []; // Array of { product, count }
     
-    // Defaults for warehouse config
-    this.maxStackHeight = 35.0; 
+    // Fixed rack height: every shelf is planned at the full 50.56 cm clearance.
+    this.rackSpec = { length: 130.6, width: 40.55, clearance: 50.56 };
 
     this.cacheDOMElements();
     this.bindEvents();
@@ -20,9 +21,6 @@ export class RackControls {
     this.btnAddItem = document.getElementById('btn-rack-add-item');
     this.btnClearBasket = document.getElementById('btn-clear-rack-basket');
     this.itemsContainer = document.getElementById('rack-items-container');
-
-    this.stackHeightSlider = document.getElementById('stack-height-slider');
-    this.stackHeightBadge = document.getElementById('stack-height-badge');
 
     this.racksCount = document.getElementById('racks-count');
     this.shelvesCount = document.getElementById('shelves-count');
@@ -64,15 +62,6 @@ export class RackControls {
       });
     }
 
-    if (this.stackHeightSlider) {
-      this.stackHeightSlider.addEventListener('input', (e) => {
-        this.maxStackHeight = parseFloat(e.target.value);
-        if (this.stackHeightBadge) {
-          this.stackHeightBadge.textContent = `${this.maxStackHeight.toFixed(1)} cm`;
-        }
-        this.calculateRacks(); // Recalculate on height change
-      });
-    }
   }
 
   // Called when the tab is opened to ensure data is fresh
@@ -82,7 +71,7 @@ export class RackControls {
     if (this.basket.length > 0) {
       this.calculateRacks();
     } else {
-      if (this.visualizer) this.visualizer.renderRackContents([]);
+      if (this.visualizer) this.visualizer.renderRackContents({ racks: [] });
     }
   }
 
@@ -150,81 +139,54 @@ export class RackControls {
   calculateRacks() {
     if (this.basket.length === 0) {
       this.updateMetricsEmpty();
-      if (this.visualizer) this.visualizer.renderRackContents([]);
+      if (this.visualizer) this.visualizer.renderRackContents({ racks: [] });
       return;
     }
 
-    // --- PHASE 2A MOCK ALGORITHM ---
-    // This generates fake shelf data to visualize the racks.
-    // Phase 2B will replace this with the exact math.
+    // 1. Run the real algorithm
+    const packer = new RackPacker(this.rackSpec);
+    const result = packer.pack(this.basket, this.rackSpec.clearance);
+
+    // 2. Update Metrics UI
+    this.racksCount.textContent = result.racksRequired;
+    this.shelvesCount.textContent = result.shelvesRequired;
+    this.stacksCount.textContent = result.totalStacks;
     
-    let mockShelves = [];
-    let currentShelfIndex = 0;
-    let currentX = -60; // Start near the left edge of the 130cm shelf
-    let currentZ = 0;
+    this.statusBadge.className = result.unfittedItems.length > 0 ? 'status-badge danger' : 'status-badge safe';
+    this.statusBadge.textContent = result.unfittedItems.length > 0 ? 'Items too large' : 'Fits in warehouse';
 
-    this.basket.forEach(item => {
-      const p = item.product;
-      
-      // Basic math for mock visualization
-      const itemsPerStack = Math.floor(this.maxStackHeight / p.exactHeight);
-      const numStacks = Math.ceil(item.count / itemsPerStack);
-      
-      for (let i = 0; i < numStacks; i++) {
-        // If we run out of X space (130cm), move to the next shelf
-        if (currentX + p.length > 65) {
-          currentShelfIndex++;
-          currentX = -60;
-        }
-        
-        // Prevent going over 4 shelves for the mock
-        if (currentShelfIndex >= 4) break; 
-
-        let shelf = mockShelves.find(s => s.shelfIndex === currentShelfIndex);
-        if (!shelf) {
-          shelf = { shelfIndex: currentShelfIndex, items: [] };
-          mockShelves.push(shelf);
-        }
-
-        const itemsInThisStack = Math.min(itemsPerStack, item.count - (i * itemsPerStack));
-        
-        // Mock positioning (spread along X axis)
-        shelf.items.push({
-          product: p,
-          count: itemsInThisStack,
-          stackHeight: itemsInThisStack * p.exactHeight,
-          x: currentX + (p.length / 2), // centered on its footprint
-          z: currentZ,
-          dx: p.length,
-          dz: p.width
-        });
-
-        currentX += p.length + 2; // 2cm gap
-      }
-    });
-
-    // Update UI metrics based on mock data
-    this.racksCount.textContent = Math.ceil(mockShelves.length / 4) || 1;
-    this.shelvesCount.textContent = mockShelves.length;
-    this.stacksCount.textContent = mockShelves.reduce((sum, s) => sum + s.items.length, 0);
-    
-    this.statusBadge.className = 'status-badge safe';
-    this.statusBadge.textContent = 'Fits in warehouse';
-
-    // Update Breakdown List
+    // 3. Update Breakdown List
     let breakdownHtml = '';
-    mockShelves.forEach(shelf => {
-      breakdownHtml += `<div style="margin-bottom: 6px;"><strong>Shelf ${shelf.shelfIndex + 1}:</strong><br/>`;
-      shelf.items.forEach(i => {
-        breakdownHtml += `&nbsp;&nbsp;• ${i.count}× ${i.product.name}<br/>`;
+    if (result.racksRequired === 0) {
+      breakdownHtml = '<div style="color: var(--color-bad);">Items cannot fit on the 130.6×40.55cm shelves.</div>';
+    } else {
+      result.racks.forEach(rack => {
+        breakdownHtml += `<div style="margin-bottom: 12px; border-bottom: 1px solid var(--color-rule); padding-bottom: 6px;">`;
+        breakdownHtml += `<strong style="color: var(--color-accent-deep);">Rack ${rack.rackIndex + 1}</strong><br/>`;
+        
+        rack.shelves.forEach(shelf => {
+          breakdownHtml += `<div style="margin-top: 4px; font-size: 11px;">`;
+          breakdownHtml += `<strong>Shelf ${shelf.shelfIndex + 1}</strong> (${shelf.utilization}% full)<br/>`;
+          
+          // Aggregate counts by SKU
+          const skuCounts = {};
+          shelf.stacks.forEach(s => {
+            skuCounts[s.product.name] = (skuCounts[s.product.name] || 0) + s.count;
+          });
+          
+          Object.entries(skuCounts).forEach(([name, count]) => {
+            breakdownHtml += `&nbsp;&nbsp;• ${count}× ${name}<br/>`;
+          });
+          breakdownHtml += `</div>`;
+        });
+        breakdownHtml += `</div>`;
       });
-      breakdownHtml += `</div>`;
-    });
+    }
     this.shelfBreakdown.innerHTML = breakdownHtml;
 
-    // Send to 3D Visualizer
+    // 4. Update 3D Scene
     if (this.visualizer) {
-      this.visualizer.renderRackContents(mockShelves);
+      this.visualizer.renderRackContents(result);
     }
   }
 

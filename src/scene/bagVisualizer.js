@@ -5,7 +5,10 @@ import {
   createFloorGridTexture,
   createTextBadgeTexture,
   createWireMeshTexture,
-  createPerforatedDeckTexture
+  createPerforatedDeckTexture,
+  createWarehouseFloorTexture,
+  createContactShadowTexture,
+  createBayMarkerTexture
 } from './textures.js';
 import { DEFAULT_BAG } from '../data/products.js';
 
@@ -15,11 +18,19 @@ export class BagVisualizer {
     this.tooltip = tooltipElement;
     this.bagSpec = { ...DEFAULT_BAG };
     this.rackSpec = {
-      length: 130.0,
+      length: 130.6,
       width: 40.55,
       shelfClearance: 50.56,
+      deckThickness: 0.7,
       shelvesCount: 4
     };
+    // Clear height stays 50.56 cm; shelf pitch includes the deck so linens never clip the tier above.
+    this.rackSpec.shelfPitch = this.rackSpec.shelfClearance + this.rackSpec.deckThickness;
+    this.rackSpec.totalHeight =
+      this.rackSpec.shelfPitch * (this.rackSpec.shelvesCount - 1) +
+      this.rackSpec.deckThickness +
+      this.rackSpec.shelfClearance +
+      4.0;
     this.mode = 'bag'; // 'bag' or 'rack'
     this.rackGroup = null;
     this.rackLinenGroup = null;
@@ -203,33 +214,124 @@ export class BagVisualizer {
     }
   }
 
+  adjustLightingForRacks(totalRacks = 1) {
+    const rackSpacing = this.rackSpec.length + 40;
+    const spanX = Math.max(1, totalRacks) * rackSpacing;
+    const halfSpan = spanX / 2 + 120;
+
+    // Expand keyLight shadow frustum so all racks cast beautiful, unclipped soft shadows
+    if (this.keyLight) {
+      this.keyLight.position.set(spanX * 0.2, 340, 240);
+      this.keyLight.target.position.set(0, 100, 0);
+      this.keyLight.shadow.camera.left = -halfSpan;
+      this.keyLight.shadow.camera.right = halfSpan;
+      this.keyLight.shadow.camera.top = 280;
+      this.keyLight.shadow.camera.bottom = -80;
+      this.keyLight.shadow.camera.near = 20;
+      this.keyLight.shadow.camera.far = 900;
+      this.keyLight.shadow.camera.updateProjectionMatrix();
+      this.keyLight.shadow.bias = -0.0005;
+      this.keyLight.intensity = 2.4;
+    }
+
+    // Wide ambient warehouse hemisphere lighting
+    if (this.hemiLight) {
+      this.hemiLight.intensity = 1.25;
+      this.hemiLight.color.set('#f8fafc');
+      this.hemiLight.groundColor.set('#1e293b');
+    }
+
+    if (this.fillLight) {
+      this.fillLight.position.set(-halfSpan * 0.7, 260, 200);
+      this.fillLight.intensity = 1.4;
+    }
+
+    if (this.rimLight) {
+      this.rimLight.position.set(halfSpan * 0.7, 260, -220);
+      this.rimLight.intensity = 1.5;
+    }
+
+    if (this.spotLight) {
+      this.spotLight.position.set(0, 360, 0);
+      this.spotLight.target.position.set(0, 100, 0);
+      this.spotLight.angle = Math.PI / 2.6;
+      this.spotLight.distance = Math.max(500, spanX * 1.6);
+      this.spotLight.intensity = 2.2;
+    }
+  }
+
+  restoreBagLighting() {
+    if (this.keyLight) {
+      this.keyLight.position.set(75, 130, 65);
+      this.keyLight.target.position.set(0, 23.5, 0);
+      const d = 65;
+      this.keyLight.shadow.camera.left = -d;
+      this.keyLight.shadow.camera.right = d;
+      this.keyLight.shadow.camera.top = d;
+      this.keyLight.shadow.camera.bottom = -d;
+      this.keyLight.shadow.camera.near = 10;
+      this.keyLight.shadow.camera.far = 350;
+      this.keyLight.shadow.camera.updateProjectionMatrix();
+      this.keyLight.intensity = 2.2;
+    }
+
+    if (this.hemiLight) {
+      this.hemiLight.intensity = 0.95;
+      this.hemiLight.color.set('#f8fafc');
+      this.hemiLight.groundColor.set('#0f172a');
+    }
+
+    if (this.fillLight) {
+      this.fillLight.position.set(-65, 90, 50);
+      this.fillLight.intensity = 1.2;
+    }
+
+    if (this.rimLight) {
+      this.rimLight.position.set(-50, 95, -75);
+      this.rimLight.intensity = 1.6;
+    }
+
+    if (this.spotLight) {
+      this.spotLight.position.set(0, 110, 0);
+      this.spotLight.target.position.set(0, 23.5, 0);
+      this.spotLight.angle = Math.PI / 4;
+      this.spotLight.distance = 250;
+      this.spotLight.intensity = 2.0;
+    }
+  }
+
   buildGround() {
-    const groundGeo = new THREE.PlaneGeometry(350, 350);
-    const groundTexture = createFloorGridTexture();
-    const groundMat = new THREE.MeshStandardMaterial({
-      map: groundTexture,
-      roughness: 0.85,
-      metalness: 0.15
+    // Expansive warehouse concrete floor (60 × 60 meters)
+    const groundGeo = new THREE.PlaneGeometry(6000, 6000);
+    this.warehouseFloorTexture = createWarehouseFloorTexture();
+    this.floorMat = new THREE.MeshStandardMaterial({
+      map: this.warehouseFloorTexture,
+      roughness: 0.75,
+      metalness: 0.2
     });
 
-    const ground = new THREE.Mesh(groundGeo, groundMat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.05;
-    ground.receiveShadow = true;
-    this.scene.add(ground);
+    this.groundMesh = new THREE.Mesh(groundGeo, this.floorMat);
+    this.groundMesh.rotation.x = -Math.PI / 2;
+    this.groundMesh.position.y = -0.05;
+    this.groundMesh.receiveShadow = true;
+    this.scene.add(this.groundMesh);
 
-    // Circular shadow floor fade
+    // Bag soft contact shadow (only shown in bag mode)
     const shadowGeo = new THREE.PlaneGeometry(130, 90);
     const shadowMat = new THREE.MeshBasicMaterial({
       color: 0x000000,
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.45,
       depthWrite: false
     });
-    const shadowPlate = new THREE.Mesh(shadowGeo, shadowMat);
-    shadowPlate.rotation.x = -Math.PI / 2;
-    shadowPlate.position.y = 0.01;
-    this.scene.add(shadowPlate);
+    this.shadowPlate = new THREE.Mesh(shadowGeo, shadowMat);
+    this.shadowPlate.rotation.x = -Math.PI / 2;
+    this.shadowPlate.position.y = 0.01;
+    this.scene.add(this.shadowPlate);
+
+    // Group for rack staging environment (individual rack contact shadows & bay floor markers)
+    this.rackEnvGroup = new THREE.Group();
+    this.scene.add(this.rackEnvGroup);
   }
 
   buildBag() {
@@ -835,26 +937,36 @@ export class BagVisualizer {
     let endTarget = new THREE.Vector3(0, this.bagSpec.height / 2, 0);
 
     if (this.mode === 'rack') {
-      const centerY = (this.rackSpec.shelfClearance * this.rackSpec.shelvesCount) / 2;
+      const totalRacks = this.currentTotalRacks || 1;
+      const rackSpacing = this.rackSpec.length + 40;
+      const spanX = totalRacks * rackSpacing;
+      const centerY = this.rackSpec.totalHeight / 2;
       endTarget.set(0, centerY, 0);
-      const dist = 170;
+
+      const aspect = (this.container.clientWidth || 1000) / (this.container.clientHeight || 700);
+      const dist = totalRacks > 1
+        ? Math.max(170, (spanX / (2 * Math.tan((this.camera.fov * Math.PI) / 360) * Math.min(aspect, 1.8))) * 1.15)
+        : 170;
+
+      const camY = Math.max(115, 80 + (totalRacks * 8));
+      const camX = totalRacks > 1 ? spanX * 0.22 : 125;
 
       switch (presetName) {
         case 'front':
           endPos.set(0, centerY, dist);
           break;
         case 'side':
-          endPos.set(dist, centerY, 0);
+          endPos.set(dist * 0.75, centerY, 0);
           break;
         case 'top':
-          endPos.set(0, dist * 1.1, 0.01);
+          endPos.set(0, dist * 1.25, 0.01);
           break;
         case 'inside':
           endPos.set(0, centerY, 40);
           break;
         case 'iso':
         default:
-          endPos.set(125, 110, 135);
+          endPos.set(camX, camY, dist);
           break;
       }
     } else {
@@ -1069,50 +1181,55 @@ export class BagVisualizer {
   setMode(mode) {
     this.mode = mode;
     if (mode === 'rack') {
-      // Remove fog so rack is crystal clear with no murky wash
+      // Remove fog so racks are crystal clear
       this.scene.fog = null;
 
       if (this.bagGroup) this.bagGroup.visible = false;
       if (this.productMeshes) {
         this.productMeshes.forEach(m => m.visible = false);
       }
-      if (!this.rackGroup) this.buildRack();
+      if (this.shadowPlate) this.shadowPlate.visible = false;
+      if (this.rackEnvGroup) this.rackEnvGroup.visible = true;
+
+      const totalRacks = this.currentTotalRacks || 1;
+      if (!this.rackGroup) this.buildRack(totalRacks);
+      this.adjustLightingForRacks(totalRacks);
+
       this.rackGroup.visible = true;
       if (this.rackLinenGroup) this.rackLinenGroup.visible = true;
 
-      // Adjust spotlight for taller rack tiers
-      if (this.spotLight) {
-        this.spotLight.position.set(0, 260, 0);
-        this.spotLight.target.position.set(0, 100, 0);
-        this.spotLight.distance = 400;
-      }
-
-      // Allow full 360 degree orbit (no polar floor clamp) and unrestricted zoom
+      // Allow full 360 degree orbit and unrestricted zoom
       this.controls.maxPolarAngle = Math.PI;
       this.controls.minDistance = 10;
-      this.controls.maxDistance = 1200;
+      this.controls.maxDistance = 3500;
 
-      // Center on rack (Y = 100 cm) and frame nicely without far zoom-out
-      this.controls.target.set(0, 100, 0);
-      this.camera.position.set(125, 110, 135);
+      const rackSpacing = this.rackSpec.length + 40;
+      const spanX = totalRacks * rackSpacing;
+      const aspect = (this.container.clientWidth || 1000) / (this.container.clientHeight || 700);
+      const dist = totalRacks > 1
+        ? Math.max(170, (spanX / (2 * Math.tan((this.camera.fov * Math.PI) / 360) * Math.min(aspect, 1.8))) * 1.15)
+        : 170;
+
+      const camY = Math.max(115, 80 + (totalRacks * 8));
+      const camX = totalRacks > 1 ? spanX * 0.22 : 125;
+
+      this.controls.target.set(0, this.rackSpec.totalHeight / 2, 0);
+      this.camera.position.set(camX, camY, dist);
       this.controls.update();
     } else {
-      // Restore default atmospheric fog for bag mode
+      // Restore atmospheric fog for bag mode
       this.scene.fog = this.defaultFog;
 
       if (this.rackGroup) this.rackGroup.visible = false;
       if (this.rackLinenGroup) this.rackLinenGroup.visible = false;
+      if (this.rackEnvGroup) this.rackEnvGroup.visible = false;
+      if (this.shadowPlate) this.shadowPlate.visible = true;
       if (this.bagGroup) this.bagGroup.visible = true;
       if (this.productMeshes) {
         this.productMeshes.forEach(m => m.visible = true);
       }
 
-      // Reset spotlight for bag height
-      if (this.spotLight) {
-        this.spotLight.position.set(0, 110, 0);
-        this.spotLight.target.position.set(0, 23.5, 0);
-        this.spotLight.distance = 250;
-      }
+      this.restoreBagLighting();
 
       // Reset camera and controls constraints for the bag
       this.controls.maxPolarAngle = Math.PI / 2 + 0.05;
@@ -1124,13 +1241,34 @@ export class BagVisualizer {
     }
   }
 
-  buildRack() {
+  buildRack(numRacks = 1) {
     if (this.rackGroup) this.scene.remove(this.rackGroup);
     this.rackGroup = new THREE.Group();
 
-    const { length, width, shelfClearance, shelvesCount } = this.rackSpec;
-    const totalHeight = shelfClearance * shelvesCount; // ~202.24 cm
-    const halfX = length / 2; // 65 cm
+    const count = Math.max(1, numRacks);
+    const rackWidth = this.rackSpec.length;
+    const rackSpacing = rackWidth + 40; // 40 units gap between racks
+
+    for (let r = 0; r < count; r++) {
+      const offsetX = (r - (count - 1) / 2) * rackSpacing;
+      const singleRack = this._createSingleRackFrame();
+      singleRack.position.x = offsetX;
+      this.rackGroup.add(singleRack);
+    }
+
+    this.scene.add(this.rackGroup);
+    
+    // Hide bag elements if they exist
+    if (this.bagGroup) this.bagGroup.visible = false;
+    if (this.productMeshes) {
+      this.productMeshes.forEach(m => m.visible = false);
+    }
+  }
+
+  _createSingleRackFrame() {
+    const singleRack = new THREE.Group();
+    const { length, width, shelfClearance, deckThickness, shelfPitch, shelvesCount, totalHeight } = this.rackSpec;
+    const halfX = length / 2; // 65.3 cm
     const halfZ = width / 2; // 20.275 cm
     const postThick = 2.4; // 2.4 cm square upright tubing
 
@@ -1144,21 +1282,18 @@ export class BagVisualizer {
     const deckTex = createPerforatedDeckTexture();
     deckTex.repeat.set(3, 1);
 
-    // Dark slate powder-coated steel posts & frame
     const frameMat = new THREE.MeshStandardMaterial({
       color: 0x1e293b,
       roughness: 0.35,
       metalness: 0.82
     });
 
-    // Dark chassis structural steel
     const chassisMat = new THREE.MeshStandardMaterial({
       color: 0x0f172a,
       roughness: 0.45,
       metalness: 0.85
     });
 
-    // Perforated galvanized deck
     const deckMat = new THREE.MeshStandardMaterial({
       map: deckTex,
       color: 0x94a3b8,
@@ -1166,7 +1301,6 @@ export class BagVisualizer {
       metalness: 0.75
     });
 
-    // Semi-transparent welded wire mesh (back & sides)
     const wireMat = new THREE.MeshStandardMaterial({
       map: wireTex,
       transparent: true,
@@ -1185,28 +1319,24 @@ export class BagVisualizer {
       metalness: 0.9
     });
 
-    // Polished / brushed chrome for collar clamps, handles, caster forks
     const chromeMat = new THREE.MeshStandardMaterial({
       color: 0xe2e8f0,
       roughness: 0.2,
       metalness: 0.95
     });
 
-    // Caster polyurethane tire
     const tireMat = new THREE.MeshStandardMaterial({
       color: 0x090d16,
       roughness: 0.75,
       metalness: 0.15
     });
 
-    // Caster metal hub
     const hubMat = new THREE.MeshStandardMaterial({
       color: 0x475569,
       roughness: 0.3,
       metalness: 0.88
     });
 
-    // Front caster red safety brake pedal
     const brakeMat = new THREE.MeshStandardMaterial({
       color: 0xdc2626,
       roughness: 0.35,
@@ -1226,162 +1356,151 @@ export class BagVisualizer {
     const flangeGeo = new THREE.BoxGeometry(postThick + 1.4, 0.6, postThick + 1.4);
 
     postPositions.forEach(pos => {
-      // Main vertical post
       const post = new THREE.Mesh(postGeo, frameMat);
       post.position.set(...pos);
       post.castShadow = true;
       post.receiveShadow = true;
-      this.rackGroup.add(post);
+      singleRack.add(post);
 
-      // Chrome top cap
       const cap = new THREE.Mesh(capGeo, chromeMat);
       cap.position.set(pos[0], totalHeight + 0.5, pos[2]);
-      this.rackGroup.add(cap);
+      singleRack.add(cap);
 
-      // Bottom mounting flange
       const flange = new THREE.Mesh(flangeGeo, chromeMat);
       flange.position.set(pos[0], 0.3, pos[2]);
-      this.rackGroup.add(flange);
+      singleRack.add(flange);
     });
 
-    // 3. Top Structural Cross-Bars (Connects posts at roof level)
+    // 3. Top Structural Cross-Bars
     const topLongGeo = new THREE.BoxGeometry(length, 2.0, 2.0);
     const topLatGeo = new THREE.BoxGeometry(2.0, 2.0, width - (postThick * 2));
 
     const topRear = new THREE.Mesh(topLongGeo, frameMat);
     topRear.position.set(0, totalHeight - 1.0, -halfZ);
-    this.rackGroup.add(topRear);
+    singleRack.add(topRear);
 
     const topFront = new THREE.Mesh(topLongGeo, frameMat);
     topFront.position.set(0, totalHeight - 1.0, halfZ);
-    this.rackGroup.add(topFront);
+    singleRack.add(topFront);
 
     const topLeft = new THREE.Mesh(topLatGeo, frameMat);
     topLeft.position.set(-halfX, totalHeight - 1.0, 0);
-    this.rackGroup.add(topLeft);
+    singleRack.add(topLeft);
 
     const topRight = new THREE.Mesh(topLatGeo, frameMat);
     topRight.position.set(halfX, totalHeight - 1.0, 0);
-    this.rackGroup.add(topRight);
+    singleRack.add(topRight);
 
-    // 4. Back Wire Mesh Panel & Rear Reinforcement Frame
+    // 4. Back Wire Mesh Panel & Spine
     const backMeshGeo = new THREE.PlaneGeometry(length - (postThick * 2), totalHeight - 4);
     const backMesh = new THREE.Mesh(backMeshGeo, wireMat);
     backMesh.position.set(0, totalHeight / 2, -halfZ + 0.4);
-    this.rackGroup.add(backMesh);
+    singleRack.add(backMesh);
 
-    // Center vertical spine on back panel
     const backSpineGeo = new THREE.BoxGeometry(1.6, totalHeight, 1.2);
     const backSpine = new THREE.Mesh(backSpineGeo, chassisMat);
     backSpine.position.set(0, totalHeight / 2, -halfZ);
-    this.rackGroup.add(backSpine);
+    singleRack.add(backSpine);
 
-    // 5. Side Enclosure Wire Mesh (Left and Right ends)
+    // 5. Side Enclosure Wire Mesh
     const sideMeshGeo = new THREE.PlaneGeometry(width - (postThick * 2), totalHeight - 4);
     
     const leftSideMesh = new THREE.Mesh(sideMeshGeo, sideWireMat);
     leftSideMesh.rotation.y = Math.PI / 2;
     leftSideMesh.position.set(-halfX + 0.4, totalHeight / 2, 0);
-    this.rackGroup.add(leftSideMesh);
+    singleRack.add(leftSideMesh);
 
     const rightSideMesh = new THREE.Mesh(sideMeshGeo, sideWireMat);
     rightSideMesh.rotation.y = -Math.PI / 2;
     rightSideMesh.position.set(halfX - 0.4, totalHeight / 2, 0);
-    this.rackGroup.add(rightSideMesh);
+    singleRack.add(rightSideMesh);
 
     // 6. Shelves (4 Tiers with Perimeter Lip, Trusses & Collar Clamps)
     const collarGeo = new THREE.BoxGeometry(postThick + 0.8, 2.6, postThick + 0.8);
-    const deckGeo = new THREE.BoxGeometry(length - 3.6, 0.7, width - 3.6);
+    const deckGeo = new THREE.BoxGeometry(length, 0.7, width);
     const rearLipGeo = new THREE.BoxGeometry(length, 1.8, 1.4);
     const sideLipGeo = new THREE.BoxGeometry(1.4, 1.8, width);
     const frontLipGeo = new THREE.BoxGeometry(length, 1.0, 1.4);
     const trussGeo = new THREE.BoxGeometry(1.4, 1.6, width - 4.0);
 
     for (let i = 0; i < shelvesCount; i++) {
-      const shelfY = (i * shelfClearance) + 1.5;
+      const shelfY = (i * shelfPitch) + 1.5;
 
-      // Reinforced collar clamps on all 4 posts at this shelf tier
       postPositions.forEach(pos => {
         const collar = new THREE.Mesh(collarGeo, chromeMat);
         collar.position.set(pos[0], shelfY, pos[2]);
-        this.rackGroup.add(collar);
+        singleRack.add(collar);
       });
 
-      // Perforated steel deck sheet
       const deck = new THREE.Mesh(deckGeo, deckMat);
       deck.position.set(0, shelfY, 0);
       deck.receiveShadow = true;
       deck.castShadow = true;
-      this.rackGroup.add(deck);
+      singleRack.add(deck);
 
-      // Shelf Perimeter Lip:
-      // Rear containment lip
       const rearLip = new THREE.Mesh(rearLipGeo, chassisMat);
       rearLip.position.set(0, shelfY + 0.4, -halfZ + 0.7);
-      this.rackGroup.add(rearLip);
+      singleRack.add(rearLip);
 
-      // Left & right side containment lips
       const leftLip = new THREE.Mesh(sideLipGeo, chassisMat);
       leftLip.position.set(-halfX + 0.7, shelfY + 0.4, 0);
-      this.rackGroup.add(leftLip);
+      singleRack.add(leftLip);
 
       const rightLip = new THREE.Mesh(sideLipGeo, chassisMat);
       rightLip.position.set(halfX - 0.7, shelfY + 0.4, 0);
-      this.rackGroup.add(rightLip);
+      singleRack.add(rightLip);
 
-      // Low-profile front loading lip
       const frontLip = new THREE.Mesh(frontLipGeo, chassisMat);
       frontLip.position.set(0, shelfY - 0.1, halfZ - 0.7);
-      this.rackGroup.add(frontLip);
+      singleRack.add(frontLip);
 
-      // Under-shelf transverse support trusses
       [-36, 0, 36].forEach(tx => {
         const truss = new THREE.Mesh(trussGeo, chassisMat);
         truss.position.set(tx, shelfY - 0.9, 0);
         truss.castShadow = true;
-        this.rackGroup.add(truss);
+        singleRack.add(truss);
       });
     }
 
-    // 7. Ergonomic Chrome Push Handles (on Left and Right Side Uprights)
+    // 7. Ergonomic Chrome Push Handles
     const handleBarGeo = new THREE.CylinderGeometry(1.1, 1.1, width - 4, 16);
     const handleLeft = new THREE.Mesh(handleBarGeo, chromeMat);
     handleLeft.rotation.x = Math.PI / 2;
     handleLeft.position.set(-halfX - 4.5, 102, 0);
-    this.rackGroup.add(handleLeft);
+    singleRack.add(handleLeft);
 
     const standoffGeo = new THREE.CylinderGeometry(0.8, 0.8, 4.5, 12);
     const standoffL1 = new THREE.Mesh(standoffGeo, chromeMat);
     standoffL1.rotation.z = Math.PI / 2;
     standoffL1.position.set(-halfX - 2.25, 102, -halfZ + 4);
-    this.rackGroup.add(standoffL1);
+    singleRack.add(standoffL1);
 
     const standoffL2 = new THREE.Mesh(standoffGeo, chromeMat);
     standoffL2.rotation.z = Math.PI / 2;
     standoffL2.position.set(-halfX - 2.25, 102, halfZ - 4);
-    this.rackGroup.add(standoffL2);
+    singleRack.add(standoffL2);
 
     const handleRight = new THREE.Mesh(handleBarGeo, chromeMat);
     handleRight.rotation.x = Math.PI / 2;
     handleRight.position.set(halfX + 4.5, 102, 0);
-    this.rackGroup.add(handleRight);
+    singleRack.add(handleRight);
 
     const standoffR1 = new THREE.Mesh(standoffGeo, chromeMat);
     standoffR1.rotation.z = Math.PI / 2;
     standoffR1.position.set(halfX + 2.25, 102, -halfZ + 4);
-    this.rackGroup.add(standoffR1);
+    singleRack.add(standoffR1);
 
     const standoffR2 = new THREE.Mesh(standoffGeo, chromeMat);
     standoffR2.rotation.z = Math.PI / 2;
     standoffR2.position.set(halfX + 2.25, 102, halfZ - 4);
-    this.rackGroup.add(standoffR2);
+    singleRack.add(standoffR2);
 
-    // 8. Heavy-Duty Industrial Swivel Casters (4 Wheels with Yokes, Axles & Hubs)
+    // 8. Industrial Swivel Casters
     const casterPositions = [
       [-halfX + 5.5, -halfZ + 5.5, false],
       [halfX - 5.5, -halfZ + 5.5, false],
-      [halfX - 5.5, halfZ - 5.5, true],   // Front right: has brake pedal
-      [-halfX + 5.5, halfZ - 5.5, true]   // Front left: has brake pedal
+      [halfX - 5.5, halfZ - 5.5, true],
+      [-halfX + 5.5, halfZ - 5.5, true]
     ];
 
     const swivelPlateGeo = new THREE.BoxGeometry(5.4, 0.5, 5.4);
@@ -1402,17 +1521,14 @@ export class BagVisualizer {
       const casterGroup = new THREE.Group();
       casterGroup.position.set(cx, 0, cz);
 
-      // Top mounting plate
       const plate = new THREE.Mesh(swivelPlateGeo, chromeMat);
       plate.position.set(0, 7.8, 0);
       casterGroup.add(plate);
 
-      // Swivel bearing cup
       const cup = new THREE.Mesh(swivelCupGeo, chromeMat);
       cup.position.set(0, 7.1, 0);
       casterGroup.add(cup);
 
-      // Dual fork arms
       const forkLeft = new THREE.Mesh(forkArmGeo, chromeMat);
       forkLeft.position.set(-1.4, 4.7, 0);
       casterGroup.add(forkLeft);
@@ -1421,23 +1537,19 @@ export class BagVisualizer {
       forkRight.position.set(1.4, 4.7, 0);
       casterGroup.add(forkRight);
 
-      // Axle pin
       const axle = new THREE.Mesh(axleGeo, chromeMat);
       axle.position.set(0, 3.6, 0);
       casterGroup.add(axle);
 
-      // Wheel tire (outer rubber)
       const tire = new THREE.Mesh(tireGeo, tireMat);
       tire.position.set(0, 3.6, 0);
       tire.castShadow = true;
       casterGroup.add(tire);
 
-      // Wheel hub (inner machined metal)
       const hub = new THREE.Mesh(hubGeo, hubMat);
       hub.position.set(0, 3.6, 0);
       casterGroup.add(hub);
 
-      // Front caster safety red foot-brake pedal
       if (hasBrake) {
         const brake = new THREE.Mesh(brakePedalGeo, brakeMat);
         brake.rotation.x = -Math.PI / 6;
@@ -1445,22 +1557,22 @@ export class BagVisualizer {
         casterGroup.add(brake);
       }
 
-      this.rackGroup.add(casterGroup);
+      singleRack.add(casterGroup);
     });
 
     // 9. Safety Stack Limit Indicator & Tier Gauge
-    // Visual laser gauge indicator at 35.0 cm on Shelf 1
-    const safetyLaserGeo = new THREE.CylinderGeometry(0.2, 0.2, 35.0, 8);
+    const stackLimit = shelfClearance;
+    const laserBaseY = 1.5 + (deckThickness / 2);
+    const safetyLaserGeo = new THREE.CylinderGeometry(0.2, 0.2, stackLimit, 8);
     const laserMat = new THREE.MeshBasicMaterial({
       color: 0x38bdf8,
       transparent: true,
       opacity: 0.65
     });
     const safetyLaser = new THREE.Mesh(safetyLaserGeo, laserMat);
-    safetyLaser.position.set(-halfX + 1.8, 2.25 + (35.0 / 2), halfZ - 1.8);
-    this.rackGroup.add(safetyLaser);
+    safetyLaser.position.set(-halfX + 2.0, laserBaseY + (stackLimit / 2), halfZ - 2.0);
+    singleRack.add(safetyLaser);
 
-    // Limit beacon ring at exactly 35.0 cm above shelf deck
     const limitRingGeo = new THREE.TorusGeometry(1.6, 0.2, 8, 24);
     const ringMat = new THREE.MeshStandardMaterial({
       color: 0x38bdf8,
@@ -1470,22 +1582,16 @@ export class BagVisualizer {
     });
     const limitRing = new THREE.Mesh(limitRingGeo, ringMat);
     limitRing.rotation.x = Math.PI / 2;
-    limitRing.position.set(-halfX + 1.8, 2.25 + 35.0, halfZ - 1.8);
-    this.rackGroup.add(limitRing);
+    limitRing.position.set(-halfX + 2.0, laserBaseY + stackLimit, halfZ - 2.0);
+    singleRack.add(limitRing);
 
-    this.scene.add(this.rackGroup);
-    
-    // Hide bag elements if they exist
-    if (this.bagGroup) this.bagGroup.visible = false;
-    if (this.productMeshes) {
-      this.productMeshes.forEach(m => m.visible = false);
-    }
+    return singleRack;
   }
 
   renderRackContents(rackData) {
     this.setMode('rack');
     
-    // Clear previous linen blocks from the rack
+    // Clear previous linen blocks
     if (this.rackLinenGroup) {
       this.rackGroup.remove(this.rackLinenGroup);
       this.rackLinenGroup.traverse(child => {
@@ -1494,52 +1600,119 @@ export class BagVisualizer {
     }
     this.rackLinenGroup = new THREE.Group();
 
-    if (!rackData || rackData.length === 0) {
+    const totalRacks = rackData && rackData.racks && rackData.racks.length > 0 ? rackData.racks.length : 1;
+    this.currentTotalRacks = totalRacks;
+
+    // Ensure structural frames and lighting match number of required racks
+    this.buildRack(totalRacks);
+    this.adjustLightingForRacks(totalRacks);
+
+    const rackWidth = this.rackSpec.length;
+    const rackSpacing = rackWidth + 40; // 40 units gap between racks
+    const { shelfPitch, deckThickness, totalHeight } = this.rackSpec;
+
+    // Build/refresh the warehouse staging floor environment (contact shadows + bay markings)
+    if (this.rackEnvGroup) {
+      while (this.rackEnvGroup.children.length > 0) {
+        const c = this.rackEnvGroup.children[0];
+        if (c.geometry) c.geometry.dispose();
+        this.rackEnvGroup.remove(c);
+      }
+
+      const contactTex = createContactShadowTexture();
+      const contactShadowMat = new THREE.MeshBasicMaterial({
+        map: contactTex,
+        transparent: true,
+        opacity: 0.65,
+        depthWrite: false
+      });
+
+      for (let r = 0; r < totalRacks; r++) {
+        const offsetX = (r - (totalRacks - 1) / 2) * rackSpacing;
+
+        // 1. Soft contact shadow under the 4 casters & bottom shelf
+        const shadowGeo = new THREE.PlaneGeometry(152, 60);
+        const shadowMesh = new THREE.Mesh(shadowGeo, contactShadowMat);
+        shadowMesh.rotation.x = -Math.PI / 2;
+        shadowMesh.position.set(offsetX, 0.01, 0);
+        this.rackEnvGroup.add(shadowMesh);
+
+        // 2. High-precision industrial yellow staging bay boundary on the floor
+        const bayMarkerTex = createBayMarkerTexture(r + 1);
+        const bayGeo = new THREE.PlaneGeometry(164, 72);
+        const bayMat = new THREE.MeshBasicMaterial({
+          map: bayMarkerTex,
+          transparent: true,
+          opacity: 0.85,
+          depthWrite: false
+        });
+        const bayMesh = new THREE.Mesh(bayGeo, bayMat);
+        bayMesh.rotation.x = -Math.PI / 2;
+        bayMesh.position.set(offsetX, 0.02, 0);
+        this.rackEnvGroup.add(bayMesh);
+      }
+    }
+
+    if (!rackData || !rackData.racks || rackData.racks.length === 0) {
       this.rackGroup.add(this.rackLinenGroup);
       return;
     }
 
-    const { shelfClearance } = this.rackSpec;
+    // Frame camera smoothly to show all racks in field of view
+    const spanX = totalRacks * rackSpacing;
+    const aspect = (this.container.clientWidth || 1000) / (this.container.clientHeight || 700);
+    const dist = totalRacks > 1
+      ? Math.max(170, (spanX / (2 * Math.tan((this.camera.fov * Math.PI) / 360) * Math.min(aspect, 1.8))) * 1.15)
+      : 170;
 
-    // rackData is an array of shelf objects: { shelfIndex, items: [{ product, count, stackHeight, x, z, dx, dz }] }
-    rackData.forEach(shelfData => {
-      const shelfY = (shelfData.shelfIndex * shelfClearance) + 2.25; // Offset from shelf plate
-      
-      shelfData.items.forEach(item => {
-        const key = item.product.color;
-        if (!this._fabricTexCache.has(key)) {
-          this._fabricTexCache.set(key, createFabricTexture(item.product.color, 'linen'));
-        }
-        const fabricTex = this._fabricTexCache.get(key);
+    const camY = Math.max(115, 80 + (totalRacks * 8));
+    const camX = totalRacks > 1 ? spanX * 0.22 : 125;
+
+    this.camera.position.set(camX, camY, dist);
+    this.controls.target.set(0, totalHeight / 2, 0);
+    this.controls.update();
+
+    rackData.racks.forEach(rack => {
+      // Calculate X offset to center the entire array of racks
+      const offsetX = (rack.rackIndex - (totalRacks - 1) / 2) * rackSpacing;
+
+      rack.shelves.forEach(shelfData => {
+        const shelfY = (shelfData.shelfIndex * shelfPitch) + 1.5 + (deckThickness / 2) - 0.05;
         
-        if (!this._linenMatCache.has(key)) {
-          const mat = new THREE.MeshStandardMaterial({
-            color: new THREE.Color(item.product.color),
-            map: fabricTex,
-            roughness: 0.65,
-            metalness: 0.05
-          });
-          this._linenMatCache.set(key, mat);
-        }
-        const mat = this._linenMatCache.get(key);
+        shelfData.stacks.forEach(item => {
+          const key = item.product.color;
+          if (!this._fabricTexCache.has(key)) {
+            this._fabricTexCache.set(key, createFabricTexture(item.product.color, 'linen'));
+          }
+          const fabricTex = this._fabricTexCache.get(key);
+          
+          if (!this._linenMatCache.has(key)) {
+            const mat = new THREE.MeshStandardMaterial({
+              color: new THREE.Color(item.product.color),
+              map: fabricTex,
+              roughness: 0.65,
+              metalness: 0.05
+            });
+            this._linenMatCache.set(key, mat);
+          }
+          const mat = this._linenMatCache.get(key);
 
-        // Render the vertical stack (bay) as a single solid block
-        const geo = new THREE.BoxGeometry(item.dx, item.stackHeight, item.dz);
-        const mesh = new THREE.Mesh(geo, mat);
-        
-        // Position: X and Z relative to center, Y is shelfY + half stack height
-        mesh.position.set(item.x, shelfY + (item.stackHeight / 2), item.z);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
+          const geo = new THREE.BoxGeometry(item.dx * 0.98, item.stackHeight, item.dz * 0.98);
+          const mesh = new THREE.Mesh(geo, mat);
+          
+          mesh.position.set(item.x + offsetX, shelfY + (item.stackHeight / 2), item.z);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
 
-        mesh.userData = {
-          isRackItem: true,
-          product: item.product,
-          count: item.count,
-          stackHeight: item.stackHeight
-        };
+          mesh.userData = {
+            isRackItem: true,
+            product: item.product,
+            count: item.count,
+            stackHeight: item.stackHeight
+          };
 
-        this.rackLinenGroup.add(mesh);
+          this.rackLinenGroup.add(mesh);
+        });
       });
     });
 
