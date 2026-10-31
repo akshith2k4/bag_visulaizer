@@ -34,6 +34,8 @@ export class BagVisualizer {
     this.mode = 'bag'; // 'bag' or 'rack'
     this.rackGroup = null;
     this.rackLinenGroup = null;
+    this.currentRackNumber = 1;
+    this.currentRackCount = 0;
     this.currentProduct = null;
     this.currentCount = 0;
     this.currentOrientation = 0; // 0 or 90
@@ -937,38 +939,30 @@ export class BagVisualizer {
     let endTarget = new THREE.Vector3(0, this.bagSpec.height / 2, 0);
 
     if (this.mode === 'rack') {
-      const totalRacks = this.currentTotalRacks || 1;
-      const rackSpacing = this.rackSpec.length + 40;
-      const spanX = totalRacks * rackSpacing;
       const centerY = this.rackSpec.totalHeight / 2;
+      const dist = this._getRackFitDistance();
       endTarget.set(0, centerY, 0);
-
-      const aspect = (this.container.clientWidth || 1000) / (this.container.clientHeight || 700);
-      const dist = totalRacks > 1
-        ? Math.max(170, (spanX / (2 * Math.tan((this.camera.fov * Math.PI) / 360) * Math.min(aspect, 1.8))) * 1.15)
-        : 170;
-
-      const camY = Math.max(115, 80 + (totalRacks * 8));
-      const camX = totalRacks > 1 ? spanX * 0.22 : 125;
 
       switch (presetName) {
         case 'front':
           endPos.set(0, centerY, dist);
           break;
         case 'side':
-          endPos.set(dist * 0.75, centerY, 0);
+          endPos.set(dist, centerY, 0);
           break;
         case 'top':
-          endPos.set(0, dist * 1.25, 0.01);
+          endPos.set(0, dist * 1.1, 0.01);
           break;
         case 'inside':
-          endPos.set(0, centerY, 40);
+          endPos.set(0, centerY, 22);
           break;
         case 'iso':
         default:
-          endPos.set(camX, camY, dist);
+          endPos.set(dist * 0.46, centerY + dist * 0.16, dist * 0.87);
           break;
       }
+
+      this._setRackCameraClipping(endPos, endTarget);
     } else {
       const dist = 140;
 
@@ -1191,9 +1185,9 @@ export class BagVisualizer {
       if (this.shadowPlate) this.shadowPlate.visible = false;
       if (this.rackEnvGroup) this.rackEnvGroup.visible = true;
 
-      const totalRacks = this.currentTotalRacks || 1;
-      if (!this.rackGroup) this.buildRack(totalRacks);
-      this.adjustLightingForRacks(totalRacks);
+      // Only one rack is ever in the 3D scene. The rack map handles scale.
+      if (!this.rackGroup) this.buildRack(1);
+      this.adjustLightingForRacks(1);
 
       this.rackGroup.visible = true;
       if (this.rackLinenGroup) this.rackLinenGroup.visible = true;
@@ -1201,21 +1195,9 @@ export class BagVisualizer {
       // Allow full 360 degree orbit and unrestricted zoom
       this.controls.maxPolarAngle = Math.PI;
       this.controls.minDistance = 10;
-      this.controls.maxDistance = 3500;
+      this.controls.maxDistance = 900;
 
-      const rackSpacing = this.rackSpec.length + 40;
-      const spanX = totalRacks * rackSpacing;
-      const aspect = (this.container.clientWidth || 1000) / (this.container.clientHeight || 700);
-      const dist = totalRacks > 1
-        ? Math.max(170, (spanX / (2 * Math.tan((this.camera.fov * Math.PI) / 360) * Math.min(aspect, 1.8))) * 1.15)
-        : 170;
-
-      const camY = Math.max(115, 80 + (totalRacks * 8));
-      const camX = totalRacks > 1 ? spanX * 0.22 : 125;
-
-      this.controls.target.set(0, this.rackSpec.totalHeight / 2, 0);
-      this.camera.position.set(camX, camY, dist);
-      this.controls.update();
+      this.fitRackCamera(false);
     } else {
       // Restore atmospheric fog for bag mode
       this.scene.fog = this.defaultFog;
@@ -1232,6 +1214,9 @@ export class BagVisualizer {
       this.restoreBagLighting();
 
       // Reset camera and controls constraints for the bag
+      this.camera.near = 0.5;
+      this.camera.far = 2000;
+      this.camera.updateProjectionMatrix();
       this.controls.maxPolarAngle = Math.PI / 2 + 0.05;
       this.controls.minDistance = 20;
       this.controls.maxDistance = 400;
@@ -1241,8 +1226,32 @@ export class BagVisualizer {
     }
   }
 
+  _disposeRackGroup() {
+    if (!this.rackGroup) return;
+
+    const cachedMaterials = new Set(this._linenMatCache.values());
+    const disposedMaterials = new Set();
+
+    this.rackGroup.traverse(child => {
+      if (child.geometry) child.geometry.dispose();
+
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      materials.filter(Boolean).forEach(material => {
+        if (disposedMaterials.has(material) || cachedMaterials.has(material)) return;
+        disposedMaterials.add(material);
+        if (material.map) material.map.dispose();
+        if (material.alphaMap) material.alphaMap.dispose();
+        material.dispose();
+      });
+    });
+
+    this.scene.remove(this.rackGroup);
+    this.rackGroup = null;
+    this.rackLinenGroup = null;
+  }
+
   buildRack(numRacks = 1) {
-    if (this.rackGroup) this.scene.remove(this.rackGroup);
+    this._disposeRackGroup();
     this.rackGroup = new THREE.Group();
 
     const count = Math.max(1, numRacks);
@@ -1588,9 +1597,53 @@ export class BagVisualizer {
     return singleRack;
   }
 
-  renderRackContents(rackData) {
+  _getRackFitDistance() {
+    const { length, width, totalHeight } = this.rackSpec;
+    const radius = Math.hypot(length / 2, width / 2, totalHeight / 2);
+    const verticalFov = THREE.MathUtils.degToRad(this.camera.fov);
+    const aspect = Math.max(
+      0.5,
+      (this.container.clientWidth || 1000) / (this.container.clientHeight || 700)
+    );
+    const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * aspect);
+    const limitingFov = Math.min(verticalFov, horizontalFov);
+    return (radius / Math.sin(limitingFov / 2)) * 1.12;
+  }
+
+  _setRackCameraClipping(position, target) {
+    const distance = position.distanceTo(target);
+    this.camera.near = Math.max(0.5, Math.min(8, distance * 0.01));
+    this.camera.far = Math.max(700, distance + this._getRackFitDistance() * 2 + 100);
+    this.camera.updateProjectionMatrix();
+    this.controls.maxDistance = Math.max(600, this._getRackFitDistance() * 2.4);
+  }
+
+  fitRackCamera(animate = true) {
+    if (this.mode !== 'rack') return;
+
+    const centerY = this.rackSpec.totalHeight / 2;
+    const distance = this._getRackFitDistance();
+    const target = new THREE.Vector3(0, centerY, 0);
+    const position = new THREE.Vector3(
+      distance * 0.46,
+      centerY + distance * 0.16,
+      distance * 0.87
+    );
+
+    this._setRackCameraClipping(position, target);
+
+    if (animate) {
+      this.setCameraView('iso');
+    } else {
+      this.camera.position.copy(position);
+      this.controls.target.copy(target);
+      this.controls.update();
+    }
+  }
+
+  renderRackContents(rackData, selectedRackIndex = 0, fitCamera = true) {
     this.setMode('rack');
-    
+
     // Clear previous linen blocks
     if (this.rackLinenGroup) {
       this.rackGroup.remove(this.rackLinenGroup);
@@ -1598,24 +1651,36 @@ export class BagVisualizer {
         if (child.geometry) child.geometry.dispose();
       });
     }
+    this.rackLinenGroup = null;
+
+    const racks = rackData && rackData.racks ? rackData.racks : [];
+    const rackCount = racks.length;
+    const index = rackCount > 0
+      ? Math.max(0, Math.min(rackCount - 1, Number(selectedRackIndex) || 0))
+      : 0;
+    const selectedRack = racks[index] || null;
+
+    this.currentTotalRacks = rackCount;
+    this.currentRackCount = rackCount;
+    this.currentRackNumber = index + 1;
+
+    // Only the selected rack is ever constructed in 3D.
+    this.buildRack(1);
     this.rackLinenGroup = new THREE.Group();
+    this.adjustLightingForRacks(1);
 
-    const totalRacks = rackData && rackData.racks && rackData.racks.length > 0 ? rackData.racks.length : 1;
-    this.currentTotalRacks = totalRacks;
+    const { shelfPitch, deckThickness } = this.rackSpec;
 
-    // Ensure structural frames and lighting match number of required racks
-    this.buildRack(totalRacks);
-    this.adjustLightingForRacks(totalRacks);
-
-    const rackWidth = this.rackSpec.length;
-    const rackSpacing = rackWidth + 40; // 40 units gap between racks
-    const { shelfPitch, deckThickness, totalHeight } = this.rackSpec;
-
-    // Build/refresh the warehouse staging floor environment (contact shadows + bay markings)
+    // Build/refresh the warehouse staging floor environment for this rack.
     if (this.rackEnvGroup) {
       while (this.rackEnvGroup.children.length > 0) {
         const c = this.rackEnvGroup.children[0];
         if (c.geometry) c.geometry.dispose();
+        const materials = Array.isArray(c.material) ? c.material : [c.material];
+        materials.filter(Boolean).forEach(material => {
+          if (material.map) material.map.dispose();
+          material.dispose();
+        });
         this.rackEnvGroup.remove(c);
       }
 
@@ -1627,96 +1692,75 @@ export class BagVisualizer {
         depthWrite: false
       });
 
-      for (let r = 0; r < totalRacks; r++) {
-        const offsetX = (r - (totalRacks - 1) / 2) * rackSpacing;
+      // 1. Soft contact shadow under the 4 casters & bottom shelf
+      const shadowGeo = new THREE.PlaneGeometry(152, 60);
+      const shadowMesh = new THREE.Mesh(shadowGeo, contactShadowMat);
+      shadowMesh.rotation.x = -Math.PI / 2;
+      shadowMesh.position.set(0, 0.01, 0);
+      this.rackEnvGroup.add(shadowMesh);
 
-        // 1. Soft contact shadow under the 4 casters & bottom shelf
-        const shadowGeo = new THREE.PlaneGeometry(152, 60);
-        const shadowMesh = new THREE.Mesh(shadowGeo, contactShadowMat);
-        shadowMesh.rotation.x = -Math.PI / 2;
-        shadowMesh.position.set(offsetX, 0.01, 0);
-        this.rackEnvGroup.add(shadowMesh);
-
-        // 2. High-precision industrial yellow staging bay boundary on the floor
-        const bayMarkerTex = createBayMarkerTexture(r + 1);
-        const bayGeo = new THREE.PlaneGeometry(164, 72);
-        const bayMat = new THREE.MeshBasicMaterial({
-          map: bayMarkerTex,
-          transparent: true,
-          opacity: 0.85,
-          depthWrite: false
-        });
-        const bayMesh = new THREE.Mesh(bayGeo, bayMat);
-        bayMesh.rotation.x = -Math.PI / 2;
-        bayMesh.position.set(offsetX, 0.02, 0);
-        this.rackEnvGroup.add(bayMesh);
-      }
+      // 2. Industrial staging bay boundary labelled with the real rack number
+      const bayMarkerTex = createBayMarkerTexture(this.currentRackNumber);
+      const bayGeo = new THREE.PlaneGeometry(164, 72);
+      const bayMat = new THREE.MeshBasicMaterial({
+        map: bayMarkerTex,
+        transparent: true,
+        opacity: 0.85,
+        depthWrite: false
+      });
+      const bayMesh = new THREE.Mesh(bayGeo, bayMat);
+      bayMesh.rotation.x = -Math.PI / 2;
+      bayMesh.position.set(0, 0.02, 0);
+      this.rackEnvGroup.add(bayMesh);
     }
 
-    if (!rackData || !rackData.racks || rackData.racks.length === 0) {
+    if (!selectedRack) {
       this.rackGroup.add(this.rackLinenGroup);
+      if (fitCamera) this.fitRackCamera();
       return;
     }
 
-    // Frame camera smoothly to show all racks in field of view
-    const spanX = totalRacks * rackSpacing;
-    const aspect = (this.container.clientWidth || 1000) / (this.container.clientHeight || 700);
-    const dist = totalRacks > 1
-      ? Math.max(170, (spanX / (2 * Math.tan((this.camera.fov * Math.PI) / 360) * Math.min(aspect, 1.8))) * 1.15)
-      : 170;
+    selectedRack.shelves.forEach(shelfData => {
+      const shelfY = (shelfData.shelfIndex * shelfPitch) + 1.5 + (deckThickness / 2) - 0.05;
 
-    const camY = Math.max(115, 80 + (totalRacks * 8));
-    const camX = totalRacks > 1 ? spanX * 0.22 : 125;
+      shelfData.stacks.forEach(item => {
+        const key = item.product.color;
+        if (!this._fabricTexCache.has(key)) {
+          this._fabricTexCache.set(key, createFabricTexture(item.product.color, 'linen'));
+        }
+        const fabricTex = this._fabricTexCache.get(key);
 
-    this.camera.position.set(camX, camY, dist);
-    this.controls.target.set(0, totalHeight / 2, 0);
-    this.controls.update();
+        if (!this._linenMatCache.has(key)) {
+          const mat = new THREE.MeshStandardMaterial({
+            color: new THREE.Color(item.product.color),
+            map: fabricTex,
+            roughness: 0.65,
+            metalness: 0.05
+          });
+          this._linenMatCache.set(key, mat);
+        }
+        const mat = this._linenMatCache.get(key);
 
-    rackData.racks.forEach(rack => {
-      // Calculate X offset to center the entire array of racks
-      const offsetX = (rack.rackIndex - (totalRacks - 1) / 2) * rackSpacing;
+        const geo = new THREE.BoxGeometry(item.dx * 0.98, item.stackHeight, item.dz * 0.98);
+        const mesh = new THREE.Mesh(geo, mat);
 
-      rack.shelves.forEach(shelfData => {
-        const shelfY = (shelfData.shelfIndex * shelfPitch) + 1.5 + (deckThickness / 2) - 0.05;
-        
-        shelfData.stacks.forEach(item => {
-          const key = item.product.color;
-          if (!this._fabricTexCache.has(key)) {
-            this._fabricTexCache.set(key, createFabricTexture(item.product.color, 'linen'));
-          }
-          const fabricTex = this._fabricTexCache.get(key);
-          
-          if (!this._linenMatCache.has(key)) {
-            const mat = new THREE.MeshStandardMaterial({
-              color: new THREE.Color(item.product.color),
-              map: fabricTex,
-              roughness: 0.65,
-              metalness: 0.05
-            });
-            this._linenMatCache.set(key, mat);
-          }
-          const mat = this._linenMatCache.get(key);
+        mesh.position.set(item.x, shelfY + (item.stackHeight / 2), item.z);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
 
-          const geo = new THREE.BoxGeometry(item.dx * 0.98, item.stackHeight, item.dz * 0.98);
-          const mesh = new THREE.Mesh(geo, mat);
-          
-          mesh.position.set(item.x + offsetX, shelfY + (item.stackHeight / 2), item.z);
-          mesh.castShadow = true;
-          mesh.receiveShadow = true;
+        mesh.userData = {
+          isRackItem: true,
+          product: item.product,
+          count: item.count,
+          stackHeight: item.stackHeight
+        };
 
-          mesh.userData = {
-            isRackItem: true,
-            product: item.product,
-            count: item.count,
-            stackHeight: item.stackHeight
-          };
-
-          this.rackLinenGroup.add(mesh);
-        });
+        this.rackLinenGroup.add(mesh);
       });
     });
 
     this.rackGroup.add(this.rackLinenGroup);
+    if (fitCamera) this.fitRackCamera();
   }
 
   animate() {

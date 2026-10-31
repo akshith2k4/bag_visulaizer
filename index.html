@@ -62,6 +62,45 @@
       <div class="viewport-section">
         <div id="viewport-canvas-container" class="canvas-container"></div>
 
+        <!-- All-racks overview: a fast 2D plan, so large rack counts never become one long 3D row -->
+        <div id="rack-overview" class="rack-overview" hidden aria-label="Warehouse rack overview">
+          <header class="rack-overview-header">
+            <div class="rack-overview-heading">
+              <p class="rack-overview-kicker">Warehouse plan</p>
+              <h2 class="rack-overview-title">All racks</h2>
+              <p id="rack-overview-summary" class="rack-overview-summary mono">0 racks · 0 shelves · 0 stacks</p>
+            </div>
+            <button type="button" id="btn-rack-overview-close" class="rack-overview-close">
+              Back to 3D
+            </button>
+          </header>
+
+          <div id="rack-overview-grid" class="rack-overview-grid"></div>
+
+          <footer class="rack-overview-footer">
+            <div class="rack-legend" aria-label="Shelf fill legend">
+              <span class="rack-legend-item"><i class="rack-legend-swatch rack-fill--low"></i>&lt; 30%</span>
+              <span class="rack-legend-item"><i class="rack-legend-swatch rack-fill--mid"></i>30–70%</span>
+              <span class="rack-legend-item"><i class="rack-legend-swatch rack-fill--high"></i>70%+</span>
+            </div>
+            <p class="rack-overview-hint">Click a rack to inspect it in 3D.</p>
+          </footer>
+        </div>
+
+        <!-- Single-rack navigation stays over the 3D canvas -->
+        <div id="rack-view-hud" class="rack-view-hud" hidden>
+          <div class="hud-group">
+            <span class="hud-label">Rack</span>
+            <span id="rack-hud-scope" class="hud-val rack-hud-scope mono">—</span>
+            <div class="hud-seg">
+              <button type="button" id="btn-rack-hud-prev" class="hud-btn" title="Previous rack">Prev</button>
+              <button type="button" id="btn-rack-hud-overview" class="hud-btn" title="Show every rack as a plan">All racks</button>
+              <button type="button" id="btn-rack-hud-next" class="hud-btn" title="Next rack">Next</button>
+              <button type="button" id="btn-rack-hud-fit" class="hud-btn" title="Reframe the selected rack">Fit</button>
+            </div>
+          </div>
+        </div>
+
         <div class="viewport-hud-top">
           <div class="hud-group">
             <span class="hud-label">Camera</span>
@@ -300,12 +339,53 @@
               </div>
             </div>
 
-            <div class="metric-observation" style="margin-top: 4px;">
-              <div class="obs-title">Shelf Layout Breakdown</div>
-              <div id="rack-shelf-breakdown" class="manifest-text" style="max-height: 220px; overflow-y: auto;">
-                Add inventory above to calculate shelf assignments.
+            <p class="section-desc">Open “All racks” to see the whole plan, then pick one rack to inspect its four tiers in 3D.</p>
+          </section>
+
+          <section class="panel-card" aria-labelledby="rack-inspector-title">
+            <header class="card-header">
+              <h3 id="rack-inspector-title">Rack Inspector</h3>
+              <span id="rack-inspector-scope" class="card-meta mono">No rack selected</span>
+            </header>
+
+            <div class="rack-inspector-nav">
+              <button type="button" id="btn-rack-prev" class="btn-chip" disabled>← Prev</button>
+              <button type="button" id="btn-rack-overview" class="btn-chip" disabled>All racks</button>
+              <button type="button" id="btn-rack-next" class="btn-chip" disabled>Next →</button>
+            </div>
+
+            <div class="stat-grid">
+              <div class="stat-cell">
+                <span class="stat-label">Average fill</span>
+                <strong id="rack-inspector-fill" class="stat-value mono">—</strong>
+              </div>
+              <div class="stat-cell">
+                <span class="stat-label">Tiers used</span>
+                <strong id="rack-inspector-tiers" class="stat-value mono">—</strong>
+              </div>
+              <div class="stat-cell">
+                <span class="stat-label">Stacks</span>
+                <strong id="rack-inspector-stacks" class="stat-value mono">—</strong>
+              </div>
+              <div class="stat-cell">
+                <span class="stat-label">SKUs / categories</span>
+                <strong id="rack-inspector-skus" class="stat-value mono">—</strong>
               </div>
             </div>
+
+            <div class="rack-elevation">
+              <div class="rack-elevation-head">
+                <span>Front elevation</span>
+                <span class="mono">50.56 cm clear</span>
+              </div>
+              <div id="rack-elevation-rows" class="rack-elevation-rows">
+                <div class="empty-note">Select a rack to view its shelves.</div>
+              </div>
+            </div>
+
+            <button type="button" id="btn-rack-fit" class="btn btn-secondary btn-sm btn-block" disabled>
+              Fit selected rack
+            </button>
           </section>
         </div>
       </aside>

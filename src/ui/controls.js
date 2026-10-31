@@ -224,11 +224,13 @@ export class UIController {
 
     // NEW: Handle visualizer modes
     if (tabId === 'mixed') {
+      if (this.rackUI) this.rackUI.onTabDeactivated();
       if (this.visualizer) this.visualizer.setMode('bag');
       this.populateMixedProductSelect();
       this.renderMixedTab();
       this.runPacker3D();
     } else if (tabId === 'matrix') {
+      if (this.rackUI) this.rackUI.onTabDeactivated();
       if (this.visualizer) this.visualizer.setMode('bag'); // Re-use bag scene for matrix context
       this.renderMatrixTable();
     } else if (tabId === 'rack') {
