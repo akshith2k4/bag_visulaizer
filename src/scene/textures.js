@@ -139,3 +139,96 @@ export function createTextBadgeTexture(text, bgColor = 'rgba(15, 23, 42, 0.85)',
   const texture = new THREE.CanvasTexture(canvas);
   return texture;
 }
+
+/**
+ * Creates procedural wire mesh / grid texture with transparency
+ */
+export function createWireMeshTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+
+  ctx.clearRect(0, 0, 256, 256);
+
+  const step = 28;
+  const wireWidth = 3.5;
+
+  ctx.strokeStyle = '#94a3b8'; // Galvanized steel color
+  ctx.lineWidth = wireWidth;
+  ctx.lineCap = 'round';
+
+  // Vertical and horizontal wires
+  for (let i = Math.floor(wireWidth); i <= 256; i += step) {
+    ctx.beginPath();
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i, 256);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(0, i);
+    ctx.lineTo(256, i);
+    ctx.stroke();
+  }
+
+  // Welded junction beads with metallic highlight
+  ctx.fillStyle = '#e2e8f0';
+  for (let x = Math.floor(wireWidth); x <= 256; x += step) {
+    for (let y = Math.floor(wireWidth); y <= 256; y += step) {
+      ctx.beginPath();
+      ctx.arc(x, y, wireWidth * 0.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  return texture;
+}
+
+/**
+ * Creates procedural industrial perforated steel deck texture
+ */
+export function createPerforatedDeckTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+
+  // Base slate-steel surface
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(0, 0, 512, 512);
+
+  // Brushed steel micro-lines
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.035)';
+  for (let y = 0; y < 512; y += 3) {
+    ctx.fillRect(0, y, 512, 1.5);
+  }
+
+  // Diamond/stamped slot ventilation pattern
+  ctx.fillStyle = '#090d16';
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1;
+
+  const slotW = 20;
+  const slotH = 5;
+
+  for (let y = 16; y < 512; y += 24) {
+    const rowOffset = ((y / 24) % 2) * 20;
+    for (let x = 16; x < 512; x += 40) {
+      const px = x + rowOffset;
+      if (px + slotW > 504) continue;
+      
+      ctx.beginPath();
+      ctx.rect(px, y, slotW, slotH);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  return texture;
+}

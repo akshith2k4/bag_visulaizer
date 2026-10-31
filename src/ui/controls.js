@@ -215,14 +215,26 @@ export class UIController {
 
     if (this.tabMixed) this.tabMixed.classList.toggle('active', tabId === 'mixed');
     if (this.tabMatrix) this.tabMatrix.classList.toggle('active', tabId === 'matrix');
+    
+    // NEW: Handle Rack Tab
+    const tabRack = document.getElementById('tab-content-rack');
+    if (tabRack) tabRack.classList.toggle('active', tabId === 'rack');
+
     if (this.workspace) this.workspace.dataset.activeTab = tabId;
 
+    // NEW: Handle visualizer modes
     if (tabId === 'mixed') {
+      if (this.visualizer) this.visualizer.setMode('bag');
       this.populateMixedProductSelect();
       this.renderMixedTab();
       this.runPacker3D();
     } else if (tabId === 'matrix') {
+      if (this.visualizer) this.visualizer.setMode('bag'); // Re-use bag scene for matrix context
       this.renderMatrixTable();
+    } else if (tabId === 'rack') {
+      if (this.visualizer) this.visualizer.setMode('rack');
+      // NEW: Notify the RackControls instance
+      if (this.rackUI) this.rackUI.onTabActivated();
     }
   }
 
